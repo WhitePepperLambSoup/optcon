@@ -32,7 +32,7 @@ def analytic_width(distance_mm: float) -> float:
 
 def test_beam_engines_are_registered():
     for name in (REFERENCE, FORVARD, FRESNEL):
-        assert name in available_engines("beam"), name
+        assert name in ENGINE_SPECS, name
 
 
 @pytest.mark.skipif(REFERENCE not in BEAM_ENGINES, reason="reference unavailable")
