@@ -11,6 +11,7 @@ import pytest
 
 from optcon import q
 from optcon.engines import (
+    ENGINE_SPECS,
     available_engines,
     compare_across_engines,
     gaussian_beam_radius,
