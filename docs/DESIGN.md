@@ -199,9 +199,9 @@ future change upstream is noticed.
 ## Quality gates
 
 ```bash
-python -m pytest optcon/tests -q
-python -m ruff check --no-cache optcon
-python -m mypy optcon
+python -m pytest tests -q
+ruff check .
+mypy .
 ```
 
 Engine-dependent tests skip cleanly when the engine's source is not present,

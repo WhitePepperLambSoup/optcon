@@ -41,3 +41,44 @@ jobs:
           python -m pip install -e ".[dev]"
       - name: Type check with mypy
         run: python -m mypy .
+
+  engines:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install optcon with differential engines
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,engines]"
+      - name: Run differential verification tests with external engines
+        run: python -m pytest tests/test_engines_extended.py -q
+      - name: Run cross-engine adjudications
+        run: |
+          python -m optcon.examples.experiment_02_cross_engine
+          python -m optcon.examples.experiment_03_mie_adjudication
+          python -m optcon.examples.experiment_04_beam_adjudication
+
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install build tool
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install build
+      - name: Build wheel and sdist
+        run: python -m build
+      - name: Install from wheel into clean environment
+        run: |
+          python -m pip install dist/*.whl
+      - name: Verify installed package imports and semantics
+        run: |
+          python -c "import optcon; print('Version:', optcon.__version__)"
+          python -c "from optcon import Quantity, meter, assert_unitary; print('Core import OK')"
+

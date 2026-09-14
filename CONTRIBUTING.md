@@ -33,7 +33,7 @@
 ## Running the checks
 
 ```bash
-python -m pytest optcon/tests -q
+python -m pytest tests -q
 python -m ruff check --no-cache optcon
 python -m mypy optcon
 python optcon/docs/gen_api_index.py          # regenerate docs/API.md

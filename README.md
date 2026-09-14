@@ -32,7 +32,7 @@ found.
 
 ```bash
 pip install -e ".[dev]"        # from the optcon directory
-python -m pytest optcon/tests -q
+python -m pytest tests -q
 ```
 
 The closed-form modules need only NumPy and SciPy. The engine adapters look
