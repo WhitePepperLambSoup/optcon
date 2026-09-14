@@ -8,6 +8,9 @@ version = "0.1.0"
 description = "Dimensional, contract-checked physical computation for optics and machine learning"
 readme = "README.md"
 requires-python = ">=3.11"
+authors = [
+    { name = "Zhe Su" }
+]
 license = "MIT"
 license-files = ["LICENSE"]
 keywords = [

@@ -8,7 +8,10 @@ abstract: >-
   under the same type discipline so that independent implementations can be
   compared against each other.
 authors:
-  - name: "optcon contributors"
+  - family-names: "Su"
+    given-names: "Zhe"
+    orcid: "https://orcid.org/0009-0008-3047-6452"
+    affiliation: "Research School of Physics, The Australian National University"
 version: 0.1.0
 date-released: 2026-09-14
 license: MIT
