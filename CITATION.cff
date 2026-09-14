@@ -1,0 +1,22 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata below."
+title: "optcon: dimensional, contract-checked physical computation for optics"
+abstract: >-
+  optcon carries physical units and an amplitude order through everyday optical
+  calculations, turns losslessness, passivity, reciprocity and derivative
+  correctness into checkable contracts, and brings external optical solvers
+  under the same type discipline so that independent implementations can be
+  compared against each other.
+authors:
+  - name: "optcon contributors"
+version: 0.1.0
+date-released: 2026-09-14
+license: MIT
+type: software
+keywords:
+  - optics
+  - photonics
+  - dimensional analysis
+  - differentiable simulation
+  - numerical verification
+  - scientific computing
