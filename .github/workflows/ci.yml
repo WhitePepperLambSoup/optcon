@@ -80,5 +80,6 @@ jobs:
       - name: Verify installed package imports and semantics
         run: |
           python -c "import optcon; print('Version:', optcon.__version__)"
-          python -c "from optcon import Quantity, meter, assert_unitary; print('Core import OK')"
+          python -c "from optcon import Quantity, assert_unitary; from optcon.units import meter; print('Core import OK: 1 meter =', Quantity(1.0, meter))"
+
 
