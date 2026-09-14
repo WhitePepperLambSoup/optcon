@@ -74,7 +74,11 @@ def library_default_gap():
 
 
 def adjudication_table():
-    libraries = ("miepython", "PyMieScatt")
+    libraries = [name for name in ("miepython", "PyMieScatt") if is_available(name)]
+    if not libraries:
+        print("\n=== three-way adjudication (Qext) ===")
+        print("Note: Neither miepython nor PyMieScatt is installed; skipping three-way comparison.")
+        return {}
     print("\n=== three-way adjudication (Qext) ===")
     header = (
         f"{'diameter':>10s} {'size x':>8s} {'reference':>16s}  "
@@ -137,6 +141,7 @@ def convergence_check() -> None:
             )
     finally:
         reference_mie.wiscombe_terms = original
+
     print(
         "\nAll three term counts give the same ten significant digits, so the\n"
         "reference is fully converged where the libraries disagree. The\n"
@@ -149,22 +154,23 @@ def main() -> int:
     worst = adjudication_table()
     convergence_check()
 
-    print("\n=== verdict (through the optcon adapter, medium stated) ===")
-    for name, error in sorted(worst.items(), key=lambda item: item[1]):
-        verdict = "agrees with the reference" if error <= 1e-6 else "DISAGREES"
-        print(f"{name:12s} max deviation {error:.3e}   {verdict}")
-    print(
-        "\nThe 0.2% gap is gone: all three implementations now agree to better\n"
-        "than 3e-7 across the whole range, and miepython to 2e-10. The remnant\n"
-        "is largest at the biggest size parameter, which is where PyMieScatt's\n"
-        "own recurrence has the most roundoff - not a physics disagreement.\n"
-        "\nIt is gone because the adapter states the medium explicitly for every\n"
-        "engine instead of inheriting whichever default a library ships.\n\n"
-        "The lesson is not that PyMieScatt is wrong - its default is a\n"
-        "reasonable one for atmospheric work. The lesson is that a default\n"
-        "buried in a signature changed the answer by 0.15%, and only a\n"
-        "differential test could see it."
-    )
+    if worst:
+        print("\n=== verdict (through the optcon adapter, medium stated) ===")
+        for name, error in sorted(worst.items(), key=lambda item: item[1]):
+            verdict = "agrees with the reference" if error <= 1e-6 else "DISAGREES"
+            print(f"{name:12s} max deviation {error:.3e}   {verdict}")
+        print(
+            "\nThe 0.2% gap is gone: all three implementations now agree to better\n"
+            "than 3e-7 across the whole range, and miepython to 2e-10. The remnant\n"
+            "is largest at the biggest size parameter, which is where PyMieScatt's\n"
+            "own recurrence has the most roundoff - not a physics disagreement.\n"
+            "\nIt is gone because the adapter states the medium explicitly for every\n"
+            "engine instead of inheriting whichever default a library ships.\n\n"
+            "The lesson is not that PyMieScatt is wrong - its default is a\n"
+            "reasonable one for atmospheric work. The lesson is that a default\n"
+            "buried in a signature changed the answer by 0.15%, and only a\n"
+            "differential test could see it."
+        )
     return 0
 
 
