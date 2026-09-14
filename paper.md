@@ -99,11 +99,17 @@ Engine adapters follow a two-tier classification: (1) *Tier-1 Fully Supported Ad
 
 # Research Impact Statement
 
-`optcon` is engineered to serve as a foundational validation infrastructure for computational optics and photonics research:
+`optcon` is engineered to serve as a foundational validation infrastructure for computational optics and photonics research, bridging the gap between high-level machine learning frameworks and physical rigor:
 
-1. **Laser Cavity & Resonator Alignment**: In complex Fabry-Pérot or ring cavities, small angular misalignments or thermal lensing perturbations can lead to numerical instability. `optcon` provides closed-form stability parameters ($0 \le g_1 g_2 \le 1$), Gouy phase calculations, and beam-waist matching with strict dimensional tracking.
-2. **Reinforcement Learning & Inverse Design**: Automated optical alignment agents and differentiable inverse design algorithms frequently operate over unbounded action spaces. By wrapping physical simulations in `assert_passive` and `assert_unitary` guardrails, `optcon` traps unphysical gradient states before they contaminate neural network weights.
-3. **Reproducibility & Differential Benchmark**: By quantifying discrepancies between disparate optical simulation packages, `optcon` provides researchers with objective validation criteria, eliminating hidden configuration artifacts in reported literature.
+1. **Laser Cavity Design & Precision Stabilization**: As demonstrated in our end-to-end case study (`examples/experiment_05_cavity_thermal_tolerance.py`), `optcon` models the complete operational tolerance budget of a high-finesse optical resonator ($\mathcal{F} \approx 3140$, $\lambda = 1064\text{ nm}$, $L = 100\text{ mm}$) subjected to coupled intracavity perturbations:
+   - *Angular Misalignment*: Sweeping mirror tilts $\theta \in [0, 3000]\ \mu\text{rad}$ reveals the fundamental mode crossover into higher-order transverse modes ($\mathrm{TEM}_{00} \to \mathrm{TEM}_{10}, \mathrm{TEM}_{20}$). Numerical 2D modal decompositions on a $256 \times 256$ grid match Siegman's analytical paraxial perturbation theory [@Siegman1986] to machine precision ($3.3 \times 10^{-16}$).
+   - *Intracavity Thermal Lensing*: Round-trip ABCD transfer matrix analysis quantifies the shift in effective stability $g_1^* g_2^*$ and eigenmode waist $w_c$ across the full stability regime ($D_{\mathrm{th}} \in [-35, +15]\ \mathrm{m}^{-1}$), guarded by symplectic determinant contracts ($\det(M) = 1$).
+   - *2D Tolerance Budget*: The resulting operational map establishes quantitative alignment thresholds ($\theta < 620\ \mu\mathrm{rad}$, $|D_{\mathrm{th}}| < 8\ \mathrm{m}^{-1}$) to guarantee $>90\%$ fundamental mode coupling efficiency.
+
+![End-to-End Scientific Case Study: High-Finesse Laser Cavity Transverse Mode Leakage and Thermal Tolerance Budget](docs/figures/fig4_cavity_tolerance.png)
+
+2. **Differentiable Optics & Reinforcement Learning**: Automated optical alignment agents and inverse design algorithms frequently operate over unbounded action spaces. By wrapping physical simulations in `assert_passive` and `assert_unitary` runtime guardrails, `optcon` traps unphysical gradient states before they contaminate neural network parameters, while `dot_test` mathematically guarantees adjoint operator consistency [@Claerbout1992; @Hughes2019].
+3. **Reproducibility & Differential Benchmark**: By identifying hidden parameter defaults (e.g., atmospheric vs. vacuum refractive index in Mie scattering) and algorithmic sampling limits (e.g., convolution aliasing below the Shen-Wang critical distance $z_c = N \Delta x^2 / \lambda$), `optcon` provides researchers with objective validation criteria for computational photonics.
 
 # AI Usage Disclosure
 
