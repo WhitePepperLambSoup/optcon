@@ -1,0 +1,76 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "optcon"
+version = "0.1.0"
+description = "Dimensional, contract-checked physical computation for optics and machine learning"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+keywords = [
+    "optics",
+    "photonics",
+    "units",
+    "dimensional-analysis",
+    "differentiable-simulation",
+    "scientific-computing",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+dependencies = ["numpy>=1.24", "scipy>=1.10"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7", "pytest-cov>=4.0", "ruff>=0.5", "mypy>=1.8", "matplotlib>=3.7"]
+engines = ["miepython>=2.5", "PyMieScatt>=1.7", "LightPipes>=2.1", "tmm>=0.1.8"]
+all = ["optcon[dev,engines]"]
+
+[project.urls]
+Homepage = "https://github.com/WhitePepperLambSoup/optcon"
+Repository = "https://github.com/WhitePepperLambSoup/optcon"
+Issues = "https://github.com/WhitePepperLambSoup/optcon/issues"
+
+[tool.setuptools]
+# This repository keeps the package at the top level of its own directory, so
+# the package root maps onto "." rather than the usual "src/" layout.
+packages = ["optcon", "optcon.engines"]
+package-dir = { optcon = ".", "optcon.engines" = "engines" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = [".."]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+# examples print wide tables and tests carry long explanatory names
+"tests/*" = ["E501"]
+"examples/*" = ["E501"]
+"docs/*" = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["optcon"]
+
+[tool.mypy]
+# numpy's bundled stubs use the PEP 695 ``type`` statement, which mypy can
+# only parse when told the target is 3.12 or newer.  The runtime floor stays
+# at 3.11 (see requires-python); this affects type checking only.
+python_version = "3.12"
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+check_untyped_defs = true
+ignore_missing_imports = true
