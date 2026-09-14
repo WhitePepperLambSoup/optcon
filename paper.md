@@ -9,11 +9,11 @@ tags:
   - differential testing
   - numerical verification
 authors:
-  - name: Author Name
-    orcid: 0000-0000-0000-0000
+  - name: Zhe Su
+    orcid: 0009-0008-3047-6452
     affiliation: 1
 affiliations:
-  - name: Research School of Physics, The Australian National University, Acton, ACT 2601, Australia
+  - name: Research School of Physics, The Australian National University, Canberra, ACT 2601, Australia
     index: 1
 date: 14 September 2026
 bibliography: paper.bib
