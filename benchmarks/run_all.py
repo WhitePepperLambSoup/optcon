@@ -61,6 +61,10 @@ def main() -> int:
             "Experiment 04: Gaussian Beam Propagation vs Analytical Closed Form",
             "optcon.examples.experiment_04_beam_adjudication",
         ),
+        (
+            "Experiment 05: Laser Cavity Alignment & Thermal Tolerance Budget",
+            "optcon.examples.experiment_05_cavity_thermal_tolerance",
+        ),
         ("Performance & Allocation Benchmarks", "optcon.benchmarks.bench"),
     ]
 
