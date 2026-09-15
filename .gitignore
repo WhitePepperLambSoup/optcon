@@ -24,3 +24,8 @@ Thumbs.db
 *.toc
 *.fls
 *.fdb_latexmk
+
+# Temporary review renders and intermediate builds
+review_pdf/
+docs/*_build.*
+docs/*_v2.*

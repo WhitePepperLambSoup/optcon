@@ -67,7 +67,15 @@ def unitarity_error(matrix: Any) -> float:
 
 
 def reciprocity_error(matrix: Any) -> float:
-    """``max|M - M^T|``; zero exactly when the operator is reciprocal."""
+    """``max|M - M^T|``; evaluates to zero when the operator matrix is symmetric.
+
+    Under standard symmetric port/basis conventions (such as spatial kernel symmetry
+    K(x1, x2) = K(x2, x1) in isotropic open resonators and reciprocal multi-port
+    scattering matrices with identical port normalization), matrix symmetry M = M^T
+    is the algebraic manifestation of electromagnetic reciprocity (Lorentz reciprocity).
+    Note: Magneto-optic, non-reciprocal media (e.g. Faraday isolators) or asymmetric
+    port bases break this relation.
+    """
     operator = _as_matrix(matrix)
     _require_square(operator, "matrix")
     return float(np.max(np.abs(operator - operator.T)))

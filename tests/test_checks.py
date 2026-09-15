@@ -49,6 +49,8 @@ def test_faraday_rotator_is_unitary_but_not_reciprocal():
     rotator = rotation(45.0)
     assert is_unitary(rotator)
     assert not is_reciprocal(rotator)
+    with pytest.raises(ContractViolation, match="declared reciprocal"):
+        assert_reciprocal(rotator, name="Faraday rotator")
 
 
 def test_lossy_element_is_passive_but_not_unitary():

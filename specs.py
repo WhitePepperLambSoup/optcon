@@ -108,16 +108,14 @@ def checked(function: Callable[..., Any]) -> Callable[..., Any]:
         signature = _signature(function)
         bound = signature.bind(*args, **kwargs)
         bound.apply_defaults()
-        coerced = []
-        for name, value in bound.arguments.items():
+        for name, value in list(bound.arguments.items()):
             resolved_unit, order = hints.get(name, (None, None))
             if resolved_unit is None and order is None:
-                coerced.append(value)
                 continue
             checked_value = _coerce(value, resolved_unit, order, f"{function.__name__}({name})")
-            coerced.append(checked_value.value)
+            bound.arguments[name] = checked_value.value
 
-        result = function(*coerced)
+        result = function(*bound.args, **bound.kwargs)
 
         return_spec = hints.get("return", (None, None))
         if (

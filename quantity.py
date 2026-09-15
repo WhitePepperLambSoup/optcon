@@ -346,13 +346,21 @@ def _merge_orders(a, b, context, left=None, right=None):
     return a
 
 
-def _combine_orders(a, b, divide: bool) -> int | None:
+def _combine_orders(a: int | None, b: int | None, divide: bool) -> int | None:
     if a is None or b is None:
         return None
-    return a - b if divide else a + b
+    if divide:
+        res = a - b
+        if res < 0:
+            raise AmplitudeOrderError(
+                f"cannot divide {_order_name(a)} (order {a}) by {_order_name(b)} (order {b}); "
+                f"amplitude order cannot be negative ({res})"
+            )
+        return res
+    return a + b
 
 
-def _scale_order(order, exponent, context: str) -> int | None:
+def _scale_order(order: int | None, exponent: int | float | Fraction, context: str) -> int | None:
     if order is None:
         return None
     scaled = Fraction(order) * Fraction(exponent).limit_denominator(1000)
@@ -360,6 +368,11 @@ def _scale_order(order, exponent, context: str) -> int | None:
         raise AmplitudeOrderError(
             f"{context}: raising {_order_name(order)} to the power {exponent} "
             f"would give {float(scaled):g} (a fractional amplitude order)"
+        )
+    if scaled < 0:
+        raise AmplitudeOrderError(
+            f"{context}: raising {_order_name(order)} to negative power {exponent} "
+            f"would give negative amplitude order {int(scaled)}"
         )
     return int(scaled)
 
