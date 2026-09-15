@@ -12,6 +12,7 @@ Usage:
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -297,12 +298,193 @@ def generate_fig4_performance() -> None:
     print("  [Saved] fig4_performance_speedup")
 
 
+def generate_fig5_fox_li() -> None:
+    """Figure 5: Fox-Li diffraction loss scaling and transverse eigenmodes."""
+    from optcon import q
+    from optcon.fox_li import FoxLiResonator, solve_fox_li_modes
+
+    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(15, 4.5), dpi=300)
+
+    # Subplot (a): Diffraction loss vs Fresnel number N_F
+    nf_values = np.linspace(0.6, 3.5, 20)
+    loss_flat = []
+    loss_confocal = []
+    loss_stable = []
+    vainshtein = 0.824 * (nf_values + 0.824) ** (-2)
+
+    for nf in nf_values:
+        # a = sqrt(N_F * lambda * L)
+        lam_m = 1064e-9
+        l_m = 0.5
+        a_m = math.sqrt(nf * lam_m * l_m)
+
+        # Flat-flat (g=1.0)
+        res_ff = FoxLiResonator(q(1064, "nm"), q(500, "mm"), q(a_m, "m"), g1=1.0, g2=1.0)
+        m_ff = solve_fox_li_modes(res_ff, num_modes=1, num_points=64, check_contracts=False)[0]
+        loss_flat.append(m_ff.loss)
+
+        # Confocal (g=0.0)
+        res_cf = FoxLiResonator(q(1064, "nm"), q(500, "mm"), q(a_m, "m"), g1=0.0, g2=0.0)
+        m_cf = solve_fox_li_modes(res_cf, num_modes=1, num_points=64, check_contracts=False)[0]
+        loss_confocal.append(m_cf.loss)
+
+        # Intermediate stable (g=0.8)
+        res_st = FoxLiResonator(q(1064, "nm"), q(500, "mm"), q(a_m, "m"), g1=0.8, g2=0.8)
+        m_st = solve_fox_li_modes(res_st, num_modes=1, num_points=64, check_contracts=False)[0]
+        loss_stable.append(m_st.loss)
+
+    ax1.plot(nf_values, loss_flat, "o-", color="#D32F2F", label=r"Flat-Flat ($g_1=g_2=1.0$)")
+    ax1.plot(nf_values, vainshtein, "--", color="#B71C1C", label=r"Vainshtein Asymptotic")
+    ax1.plot(nf_values, loss_stable, "s-", color="#1976D2", label=r"Curved ($g_1=g_2=0.8$)")
+    ax1.plot(nf_values, loss_confocal, "^-", color="#388E3C", label=r"Confocal ($g_1=g_2=0.0$)")
+    ax1.set_xlabel(r"Fresnel Number $N_F = a^2 / (\lambda L)$")
+    ax1.set_ylabel(r"Diffraction Loss per Transit $\delta = 1 - |\gamma|^2$")
+    ax1.set_yscale("log")
+    ax1.set_title(r"(a) Diffraction Loss vs $N_F$", weight="bold")
+    ax1.legend(frameon=True, fontsize=9)
+
+    # Subplot (b): Transverse eigenmode field profiles (TEM0 and TEM1)
+    res_b = FoxLiResonator(q(1064, "nm"), q(500, "mm"), q(1.0, "mm"), g1=0.9, g2=0.9)
+    modes_b = solve_fox_li_modes(res_b, num_modes=2, num_points=128, check_contracts=False)
+    xi = modes_b[0].coordinates / 1e-3  # mm
+
+    u0 = np.abs(modes_b[0].amplitude) ** 2
+    u1 = np.abs(modes_b[1].amplitude) ** 2
+    ax2.plot(xi, u0 / np.max(u0), "-", color="#1976D2", label=r"$\mathrm{TEM}_0$ (Fundamental)")
+    ax2.plot(xi, u1 / np.max(u1), "--", color="#E64A19", label=r"$\mathrm{TEM}_1$ (First Odd)")
+    ax2.axvline(-1.0, color="gray", linestyle=":", label="Aperture Edge")
+    ax2.axvline(1.0, color="gray", linestyle=":")
+    ax2.set_xlabel("Transverse Position $x$ (mm)")
+    ax2.set_ylabel(r"Normalized Intensity $|u(x)|^2$")
+    ax2.set_title(r"(b) Transverse Eigenmodes ($N_F=1.88$)", weight="bold")
+    ax2.legend(frameon=True, fontsize=9)
+
+    # Subplot (c): Angular misalignment tilt
+    tilts = [0.0, 100.0, 200.0]  # urad
+    colors = ["#388E3C", "#F57C00", "#D32F2F"]
+    for t_urad, col in zip(tilts, colors, strict=True):
+        res_tilt = FoxLiResonator(
+            q(1064, "nm"),
+            q(500, "mm"),
+            q(1.2, "mm"),
+            g1=0.85,
+            g2=0.85,
+            tilt=q(t_urad, "urad") if t_urad > 0 else None,
+        )
+        m_t = solve_fox_li_modes(res_tilt, num_modes=1, num_points=128, check_contracts=False)[0]
+        u_t = np.abs(m_t.amplitude) ** 2
+        ax3.plot(
+            m_t.coordinates / 1e-3,
+            u_t / np.max(u_t),
+            "-",
+            color=col,
+            label=rf"$\theta = {int(t_urad)}\ \mu\mathrm{{rad}}$ ($\delta={m_t.loss*100:.1f}\%$)",
+        )
+
+    ax3.set_xlabel("Transverse Position $x$ (mm)")
+    ax3.set_ylabel(r"Normalized Intensity $|u(x)|^2$")
+    ax3.set_title("(c) Mirror Tilt Misalignment", weight="bold")
+    ax3.legend(frameon=True, fontsize=9)
+
+    plt.tight_layout()
+    fig.savefig(FIGURES_DIR / "fig5_fox_li_diffraction.png", dpi=300, bbox_inches="tight")
+    fig.savefig(FIGURES_DIR / "fig5_fox_li_diffraction.pdf", bbox_inches="tight")
+    plt.close(fig)
+    print("  [Saved] fig5_fox_li_diffraction")
+
+
+def generate_fig6_nlse() -> None:
+    """Figure 6: G-NLSE fundamental soliton and Raman self-frequency shift."""
+    from optcon import q
+    from optcon.nlse import (
+        FiberParameters,
+        soliton_parameters,
+        soliton_pulse,
+        solve_nlse,
+    )
+
+    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(15, 4.5), dpi=300)
+
+    # Subplot (a): Fundamental soliton propagation stability over 3 z0
+    lam = q(1550, "nm")
+    t0 = q(1.0, "ps")
+    b2 = q(-20.0, "ps^2/km")
+    gam = q(2.0, "1/(W*km)")
+
+    scales = soliton_parameters(lam, t0, b2, gam)
+    z0 = scales["soliton_period"]
+    p0 = scales["peak_power"]
+
+    p_init = soliton_pulse(p0, t0, lam, samples=512, time_window=q(20.0, "ps"))
+    fiber_lossless = FiberParameters(beta2=b2, gamma=gam)
+
+    p_1z0, _ = solve_nlse(p_init, fiber_lossless, distance=z0, steps=60)
+    p_3z0, energy_trace = solve_nlse(p_init, fiber_lossless, distance=q(3.0 * z0.value, "m"), steps=180)
+
+    t_ps = p_init.time_axis * 1e12
+    ax1.plot(t_ps, np.abs(p_init.amplitude) ** 2, "-", color="#1976D2", label=r"$z = 0$ (Initial)")
+    ax1.plot(t_ps, np.abs(p_1z0.amplitude) ** 2, "--", color="#388E3C", label=r"$z = z_0$ ($78.5\ \mathrm{km}$)")
+    ax1.plot(t_ps, np.abs(p_3z0.amplitude) ** 2, ":", color="#D32F2F", label=r"$z = 3 z_0$ ($235.6\ \mathrm{km}$)")
+    ax1.set_xlim(-6.0, 6.0)
+    ax1.set_xlabel("Time Delay $T$ (ps)")
+    ax1.set_ylabel("Instantaneous Power (W)")
+    ax1.set_title(r"(a) Fundamental Soliton ($N=1$)", weight="bold")
+    ax1.legend(frameon=True, fontsize=9)
+
+    # Subplot (b): Raman Soliton Self-Frequency Shift (SSFS)
+    p_short = soliton_pulse(q(80.0, "W"), q(60.0, "fs"), lam, samples=512, time_window=q(2.5, "ps"))
+    fiber_no_raman = FiberParameters(beta2=b2, gamma=q(5.0, "1/(W*km)"), raman_fraction=0.0)
+    fiber_raman = FiberParameters(beta2=b2, gamma=q(5.0, "1/(W*km)"), raman_fraction=0.18)
+
+    prop_dist = q(40.0, "m")
+    p_no_r, _ = solve_nlse(p_short, fiber_no_raman, distance=prop_dist, steps=50)
+    p_r, _ = solve_nlse(p_short, fiber_raman, distance=prop_dist, steps=50)
+
+    spec_init = np.abs(np.fft.fftshift(np.fft.fft(p_short.amplitude))) ** 2
+    spec_no_r = np.abs(np.fft.fftshift(np.fft.fft(p_no_r.amplitude))) ** 2
+    spec_r = np.abs(np.fft.fftshift(np.fft.fft(p_r.amplitude))) ** 2
+
+    # In envelope representation, positive envelope frequency corresponds to lower optical carrier frequency (redshift)
+    # Convert envelope frequency shift to optical wavelength offset: Delta lambda = - lambda_0^2 / c * Delta f
+    c_speed = 299792458.0
+    lam0 = 1550e-9
+    dlam_nm = (np.fft.fftshift(p_short.angular_frequencies) / (2.0 * math.pi)) * (lam0**2 / c_speed) * 1e9
+
+    ax2.plot(dlam_nm, spec_init / np.max(spec_init), "-", color="#9E9E9E", label="Input Pulse")
+    ax2.plot(dlam_nm, spec_no_r / np.max(spec_no_r), "--", color="#1976D2", label="Kerr Only ($f_R=0$)")
+    ax2.plot(dlam_nm, spec_r / np.max(spec_r), "-", color="#D32F2F", label=r"Raman Redshift ($f_R=0.18$)")
+    ax2.set_xlim(-15.0, 15.0)
+    ax2.set_xlabel(r"Wavelength Shift $\Delta \lambda$ (nm)")
+    ax2.set_ylabel("Spectral Density (a.u.)")
+    ax2.set_title(r"(b) Raman Redshift ($z=40\ \mathrm{m}$)", weight="bold")
+    ax2.legend(frameon=True, fontsize=9)
+
+    # Subplot (c): Lossless Unitary Energy Invariance
+    steps_arr = np.arange(len(energy_trace))
+    energy_drift = np.abs(np.array(energy_trace) - 1.0)
+    ax3.semilogy(steps_arr, energy_drift + 1e-16, "-", color="#2E7D32", label=r"$|\Delta E(z)| / E(0)$")
+    ax3.axhline(1e-4, color="red", linestyle="--", label="Contract Threshold (1e-4)")
+    ax3.set_xlabel("Longitudinal Step Number $k$")
+    ax3.set_ylabel(r"Relative Energy Drift $|E(z) - E(0)| / E(0)$")
+    ax3.set_title("(c) Energy Conservation Invariant", weight="bold")
+    ax3.set_ylim(1e-16, 1e-2)
+    ax3.legend(frameon=True, fontsize=9)
+
+    plt.tight_layout()
+    fig.savefig(FIGURES_DIR / "fig6_nlse_soliton_raman.png", dpi=300, bbox_inches="tight")
+    fig.savefig(FIGURES_DIR / "fig6_nlse_soliton_raman.pdf", bbox_inches="tight")
+    plt.close(fig)
+    print("  [Saved] fig6_nlse_soliton_raman")
+
+
 def main() -> int:
     print("Generating publication figures in:", FIGURES_DIR)
     generate_fig1_architecture()
     generate_fig2_mie()
     generate_fig3_beam()
     generate_fig4_performance()
+    generate_fig5_fox_li()
+    generate_fig6_nlse()
     print("All publication figures successfully generated!")
     return 0
 

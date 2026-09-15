@@ -88,6 +88,8 @@ sqrt(amplitude_ratio(0.9))       # -> AmplitudeOrderError: that is a sqrt too fa
 | `paraxial` | focal length of a singlet, computed by several engines |
 | `thermal` | thermal lens focal length, Gaussian aperture and clipping losses |
 | `nonlinear` | SHG phase matching, coherence length, quasi-phase-matching period |
+| `fox_li` | Fredholm integral operator for open resonators with finite apertures, clipping loss, and tilt |
+| `nlse` | G-NLSE split-step Fourier solver (SSFM) with dispersion (beta2, beta3), SPM, Raman, and self-steepening |
 | `vector_fields` | two-component fields: Stokes maps, analyzers, radial polarisation |
 | `mueller` | Stokes vectors and Mueller matrices, including depolarisation |
 | `engines` | registry and adapters for external solvers, plus differential testing |

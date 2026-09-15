@@ -12,3 +12,15 @@ htmlcov/
 *.coverage.*
 .DS_Store
 Thumbs.db
+
+# LaTeX build artifacts
+*.aux
+*.bbl
+*.blg
+*.log
+*.out
+*.spl
+*.synctex.gz
+*.toc
+*.fls
+*.fdb_latexmk
