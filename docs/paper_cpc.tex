@@ -35,17 +35,38 @@ Computational Optics \sep Dimensional Analysis \sep Fredholm Integral Equations 
 
 \end{frontmatter}
 
+\section*{Program Summary}
+\small
+\noindent
+\begin{tabular*}{\linewidth}{@{\extracolsep{\fill}} p{0.32\linewidth} p{0.65\linewidth} @{}}
+\toprule
+\textbf{Program Title:} & \texttt{optcon} \\
+\textbf{CPC Program Library identifier:} & (to be assigned by publisher) \\
+\textbf{Licensing provisions:} & MIT License \\
+\textbf{Programming language:} & Python (version 3.10 or higher) \\
+\textbf{Computer:} & Platform-independent (x86\_64, ARM64) \\
+\textbf{Operating systems:} & Linux, macOS, Microsoft Windows \\
+\textbf{RAM required:} & $< 500\,\mathrm{MB}$ for standard benchmarks \\
+\textbf{Distribution format:} & Git repository / PyPI package distribution \\
+\textbf{Keywords:} & Computational optics, dimensional analysis, contract programming, invariant manifolds, Fox-Li resonator, split-step Fourier method, adjoint verification. \\
+\textbf{Nature of problem:} & Scientific computing pipelines in optics routinely strip physical semantics at API boundaries, creating vulnerability to silent defects: angle-dimension confusion, amplitude-versus-power ambiguities, unverified invariant violations (unitarity, passivity, reciprocity), and adjoint operator discrepancies during gradient-based optimization. \\
+\textbf{Solution method:} & Algebraic contract enforcement via an 8D dimension abelian group $\mathcal{D}_\Phi \cong \mathbb{Z}^8$ and amplitude order monoid $\mathcal{O}$; operator invariant manifolds ($\mathcal{M}_U, \mathcal{M}_P, \mathcal{M}_R$); automated Claerbout adjoint dot-product verification; symmetric Nystr\"om Gauss-Legendre quadrature for Fredholm integral equations; symmetric second-order split-step Fourier method for generalized nonlinear Schr\"odinger equations. \\
+\textbf{Typical running time:} & 10--20 seconds for full test suite and benchmark replication. \\
+\bottomrule
+\end{tabular*}
+\normalsize
+
 \section{Introduction}
 \label{sec:intro}
 
-Computational optics has transitioned from standalone ray-tracing programs to differentiable physical pipelines and machine learning frameworks~\cite{Hughes2019}. Modern optical simulations routinely serve as objective functions in neural network training, reinforcement learning alignment agents, and gradient-based topological optimization.
+Computational optics spans two primary mathematical paradigms: (i) spatial boundary-value integral equations describing open-boundary diffraction, aperture clipping, and non-Hermitian modal loss in optical resonators; and (ii) spatio-temporal initial-value partial differential equations (PDEs) governing dispersion, Kerr nonlinearity, and energy-conserving soliton dynamics in waveguides. In both paradigms, numerical modeling increasingly interfaces with differentiable physical pipelines, automated alignment agents, and gradient-based optical optimization~\cite{Hughes2019}.
 
-Despite these computational advancements, the foundational numerical representations employed in scientific computing have remained largely unchanged. Physical quantities are typically stripped of their dimensions at API boundaries and stored as raw double-precision floating-point numbers (\texttt{float64}). This lack of semantic encapsulation exposes optical calculations to four recurring classes of silent numerical defects:
+Despite substantial computational advances, the foundational data representations employed across optical computing have remained largely unaugmented. Physical quantities are typically stripped of their dimensional provenance at API boundaries and stored as raw double-precision floating-point arrays (\texttt{float64}). This absence of semantic encapsulation exposes optical calculations to four recurring classes of silent numerical defects:
 \begin{enumerate}
     \item \textbf{Dimensional Confusion}: Variable names with unit suffixes (e.g., \texttt{wavelength\_nm}, \texttt{length\_mm}) document units for human readers but lack compiler enforcement. Adding nanometers directly to millimeters evaluates without syntax or runtime exception.
     \item \textbf{Field Amplitude vs.\ Power Ambiguity}: Optical field transmission $t$ and power transmission $T = |t|^2$ share the identical numeric domain $[0, 1]$ and dimensionless character. Confusing an amplitude ratio with a power ratio produces a silent square-root error ($\sqrt{T}$ vs.\ $T$) that alters convergence rates and distorts physical loss landscapes.
-    \item \textbf{Unverified Physical Invariants}: Symmetries and conservation laws---unitarity ($M^\dagger M = I$), passivity ($\sigma_{\max}(M) \le 1$), and reciprocity ($M = M^T$)---are routinely asserted only in comments rather than programmatically enforced across multi-element optical trains.
-    \item \textbf{Adjoint Operator Discrepancies}: In reverse-mode automatic differentiation, numerical approximations, discrete boundary conditions, or phase mismatches can silently invalidate mathematical adjointness ($\langle Jv, w \rangle \ne \langle v, J^\dagger w \rangle$), causing gradient optimizers to diverge or stall at unphysical states~\cite{Claerbout1992,Hughes2019}.
+    \item \textbf{Unverified Physical Invariants}: Fundamental symmetries and conservation laws---unitarity ($M^\dagger M = I$), passivity ($\sigma_{\max}(M) \le 1$), and reciprocity ($M = M^T$)---are routinely asserted only in comments rather than programmatically enforced across multi-element optical trains.
+    \item \textbf{Adjoint Operator Discrepancies}: In reverse-mode automatic differentiation and gradient optimization, numerical approximations, discrete boundary conditions, or phase mismatches can silently invalidate mathematical adjointness ($\langle Jv, w \rangle \ne \langle v, J^\dagger w \rangle$), causing gradient optimizers to diverge or stall at unphysical states~\cite{Claerbout1992,Hughes2019}.
 \end{enumerate}
 
 To resolve these challenges, we present \texttt{optcon}, an open-source computational physics package developed to provide semantic typing, physical invariant contracts, and rigorous differential solvers for optics. Figure~\ref{fig:arch} illustrates the multilayered architecture of \texttt{optcon}.
@@ -217,30 +238,61 @@ As summarized in Table~\ref{tab:discrepancies}, this differential harness has id
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=0.88\linewidth]{figures/fig4_performance_speedup.pdf}
-\caption{Computational benchmark on $512 \times 512$ grids: (a) Speedup factors achieved by vectorized separable kernels; (b) Peak memory allocation comparison showing significant footprint reduction.}
+\includegraphics[width=\linewidth]{figures/fig4_performance_speedup.pdf}
+\caption{Computational benchmark and differentiable adjoint verification: (a) Micro-benchmarking execution time for bare NumPy kernels versus \texttt{@checked} contract-protected boundaries across array lengths $N \in [10^1, 10^6]$; (b) Differentiable inverse design of resonator mirror alignment comparing optimization trajectories under Claerbout-verified adjoints versus flawed adjoints with boundary truncation mismatch; (c) Claerbout adjoint dot-product error tracking across iterations.}
 \label{fig:perf}
 \end{figure}
 
-\section{Computational Optimization and Separable Modal Expansions}
+\section{Computational Performance and Differentiable Inverse Design}
 \label{sec:performance}
 
-To eliminate runtime overhead, \texttt{optcon} adopts boundary-only contract enforcement via the \texttt{@checked} decorator. Internal numerical kernels operate directly on standard contiguous NumPy arrays.
+A frequent concern in scientific software design is that semantic assertions and dimensional checks impose crippling computational overhead. To reconcile rigorous physics with numerical performance, \texttt{optcon} adheres strictly to a \textbf{boundary-only verification paradigm}: type conversions, dimensional arithmetic, and invariant assertions execute solely at API entry and exit boundaries via the \texttt{@checked} decorator, while internal kernels operate on contiguous, bare NumPy arrays.
 
-By exploiting the spatial separability of Hermite-Gauss modes $u_{mn}(x, y) = u_m(x) u_n(y)$, the 2D modal decomposition of a scalar field $F(x, y)$ on an $N \times N$ grid:
+\subsection{Contract Execution Overhead Micro-Benchmark}
+
+Figure~\ref{fig:perf}(a) quantifies the runtime overhead of \texttt{@checked} parameter validation against raw NumPy arithmetic across array sizes $N \in [10^1, 10^6]$ for a representative optical phase calculation $\phi(r) = -\pi r^2 / (\lambda f)$. For trivial vector lengths ($N \le 100$), argument coercion and signature binding require approximately $15\,\mu\mathrm{s}$. However, because contract verification is an $\mathcal{O}(1)$ operation with respect to array length, this validation cost remains constant. For grid sizes typical of diffraction and propagation simulations ($N \ge 10^4$ to $512 \times 512$ 2D grids where FFTs require $15\sim 25\,\mathrm{ms}$), the relative boundary checking overhead drops below $0.1\%$, confirming that semantic safety is attained with negligible throughput penalty.
+
+Furthermore, internal kernels avoid redundant multidimensional integration. By exploiting the spatial separability of Hermite-Gauss modes $u_{mn}(x, y) = u_m(x) u_n(y)$, the 2D modal decomposition of a scalar field $F(x, y)$ on an $N \times N$ grid:
 \begin{equation}
 C_{mn} = \iint F(x, y) u_m^*(x) u_n^*(y) \, dx \, dy,
 \end{equation}
-is evaluated as a matrix product:
+is evaluated as a vectorized dual matrix product:
 \begin{equation}
 \mathbf{C} = \Delta x^2 \left( \mathbf{U}^\dagger \mathbf{F} \mathbf{U}^* \right)^T.
 \end{equation}
-As illustrated in Figure~\ref{fig:perf}, this reformulates the decomposition from $\mathcal{O}(M^2 N^2)$ elementwise integrations to two matrix multiplications, reducing execution time on a $512 \times 512$ grid from $276\,\mathrm{ms}$ to $0.6\,\mathrm{ms}$ ($460\times$ acceleration) and cutting peak memory from $16.0\,\mathrm{MiB}$ to $0.1\,\mathrm{MiB}$ ($160\times$ reduction).
+On a $512 \times 512$ grid, this contracts the operation from $\mathcal{O}(M^2 N^2)$ elementwise traversals to two BLAS matrix multiplications, completing in $0.6\,\mathrm{ms}$ with a peak memory footprint under $0.1\,\mathrm{MiB}$.
 
-\section{Conclusion and Code Availability}
+\subsection{End-to-End Differentiable Inverse Design and Adjoint Verification}
+
+To evaluate \texttt{optcon}'s adjoint protection in reverse-mode automatic differentiation, we construct an end-to-end differentiable inverse design problem: automated cavity mirror alignment. An input laser beam $u_{\mathrm{in}}(x)$ is coupled into an optical cavity subject to mirror angular tilt $\theta$. The objective is to determine the optimal tilt $\theta^*$ minimizing the mode-mismatch loss:
+\begin{equation}
+\mathcal{L}(\theta) = 1 - \frac{|\langle u_{\mathrm{target}}, u_{\mathrm{out}}(\theta) \rangle|^2}{\|u_{\mathrm{target}}\|^2 \|u_{\mathrm{out}}(\theta)\|^2},
+\end{equation}
+where $u_{\mathrm{out}}(\theta) = \exp(-i k \theta x) u_{\mathrm{in}}(x)$ with aperture clipping at mirror boundaries $|x| \le a$.
+
+In reverse-mode gradient evaluation, the loss gradient $\nabla_\theta \mathcal{L}$ requires the vector-Jacobian product (VJP) computed by the adjoint operator $J^\dagger$. In discrete implementations, boundary clipping or uncompensated phase shifts frequently produce a flawed adjoint operator $\tilde{J}^\dagger$. Figure~\ref{fig:perf}(c) shows the Claerbout dot-product test:
+\begin{equation}
+r = \frac{\langle J v, w \rangle}{\langle v, J^\dagger w \rangle},
+\end{equation}
+evaluated across random Gaussian probe vectors $v$ and $w$. While the mathematically verified adjoint satisfies $|r - 1| < 10^{-14}$ at machine precision, the flawed adjoint exhibits a $35\%$ discrepancy ($r \approx 0.65$).
+
+Figure~\ref{fig:perf}(b) illustrates the resulting gradient optimization trajectories initialized at a misalignment of $\theta_0 = 200\,\mu\mathrm{rad}$. Under the Claerbout-verified adjoint, the optimizer follows the true physical descent trajectory, achieving monotonic exponential convergence to $\mathcal{L} < 10^{-11}$ within 20 iterations (residual alignment error $< 0.001\,\mu\mathrm{rad}$). Conversely, the flawed adjoint supplies pseudo-gradients that cause the optimizer to stall at an unphysical loss plateau ($\mathcal{L} \approx 1.1 \times 10^{-3}$) with a persistent misalignment offset of $\theta = -14.0\,\mu\mathrm{rad}$. By flagging adjoint discrepancies prior to optimization, \texttt{optcon} prevents silent convergence to distorted local equilibria.
+
+\section{Discussion, Extensibility, and Conclusion}
 \label{sec:conclusion}
 
-\texttt{optcon} bridges the gap between high-level machine learning frameworks and rigorous physical semantics in computational optics. By tracking physical dimensions, separating field amplitude from optical power, enforcing invariant operator contracts, and providing rigorous integro-differential solvers for open resonators and nonlinear pulse propagation, it eliminates critical classes of silent failures.
+\subsection{Extensibility to Differentiable Frameworks and Vectorial Invariants}
+
+While \texttt{optcon} is currently implemented in Python and NumPy for broad accessibility, its mathematical architecture maps directly onto modern accelerated and differentiable computing environments:
+\begin{itemize}
+    \item \textbf{JIT Tracing-Time Contract Elimination}: In compilation frameworks such as JAX (\texttt{jax.jit}) and PyTorch (\texttt{torch.compile}), computation proceeds in two stages: an initial Python-level symbolic graph tracing pass, followed by XLA/Triton machine-code execution. The \texttt{@checked} decorator operates during the CPU tracing pass, verifying dimensions, amplitude orders, and operator reciprocity once before kernel compilation. Once compiled, all Python typing wrappers evaporate, providing absolute physical safety with zero GPU runtime penalty.
+    \item \textbf{Kramers-Kronig Dispersion and Causality Contracts}: In nanophotonics and broadband finite-difference time-domain (FDTD) simulations, fitted complex permittivities $\tilde{\epsilon}(\omega) = \epsilon'(\omega) + i \epsilon''(\omega)$ can violate physical causality, triggering numerical instability. The invariant manifold framework generalizes to a Hilbert-transform causality contract $\chi'(\omega) = \frac{2}{\pi} \mathcal{P} \int_0^\infty \frac{\Omega \chi''(\Omega)}{\Omega^2 - \omega^2} d\Omega$ and passivity constraint $\omega \epsilon''(\omega) \ge 0$.
+    \item \textbf{Polarization and Mueller-Stokes Manifolds}: For full-vectorial fields, Jones transfer matrices belong to the Lie group $\mathrm{SU}(2)$ for lossless retarders, while Mueller matrices must preserve the forward light cone $S_0^2 \ge S_1^2 + S_2^2 + S_3^2$, belonging to the orthochronous proper Lorentz group $\mathrm{SO}^+(1, 3)$. Extending \texttt{optcon}'s invariant manifolds to $\mathrm{SO}^+(1, 3)$ provides automated verification against unphysical filtering in experimental polarimetry.
+\end{itemize}
+
+\subsection{Conclusion and Code Availability}
+
+\texttt{optcon} bridges the gap between high-level machine learning frameworks and rigorous physical semantics in computational optics. By tracking physical dimensions in $\mathbb{Z}^8$, separating field amplitude from optical power via the Amplitude Order Monoid $\mathcal{O}$, enforcing invariant operator contracts, and providing rigorous integro-differential solvers for open resonators and nonlinear pulse propagation, it eliminates critical classes of silent failures.
 
 The complete codebase, documentation, tests, and reproducibility benchmarks are open-source and available under the MIT License at:\\
 \url{https://github.com/WhitePepperLambSoup/optcon}.
