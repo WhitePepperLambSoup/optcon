@@ -8,7 +8,11 @@ remember. Additions are cheap by design: one spec entry, plus one differential
 test where a shared observable exists.
 
 Engines that cannot import in a given environment report why rather than
-failing obscurely, and the tests that need them skip cleanly. Point the
+failing obscurely, and tests that need them skip cleanly. The status is explicit:
+`ready` means the import succeeded, `missing` means the optional package/source
+is absent, and `error` means the engine was found but failed during import. Run
+`python -m optcon.benchmarks.engine_status` for the full survey, or add
+`--strict` to gate only Tier-1 engines used by differential adapters. Point the
 registry at a different corpus with `OPTCON_CORPUS_ROOT`.
 
 ## Availability and conventions

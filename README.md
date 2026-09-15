@@ -82,7 +82,7 @@ sqrt(amplitude_ratio(0.9))       # -> AmplitudeOrderError: that is a sqrt too fa
 | `aberrations` | Zernike modes (Noll indexed), Seidel decomposition, wavefront RMS |
 | `radiometry` | Planck's law, Stefan-Boltzmann, Wien, etendue, photometry |
 | `propagation` | a sampled `Field` and FFT propagation (angular spectrum or Fresnel) |
-| `modes` | Gauss-Hermite basis, modal decomposition of a sampled field |
+| `modes` | Gauss-Hermite and Laguerre-Gauss bases, modal decomposition and reconstruction |
 | `mtf` | modulation transfer function, closed form and from any PSF |
 | `waveguide` | guided TE modes of a symmetric slab, confinement, cutoff |
 | `paraxial` | focal length of a singlet, computed by several engines |
@@ -107,7 +107,7 @@ sqrt(amplitude_ratio(0.9))       # -> AmplitudeOrderError: that is a sqrt too fa
 | A waveguide mode solver satisfies its own dispersion relation | every slab mode has residual < 1e-6 and `u^2 + w^2 = V^2` |
 | Three independent propagators agree | optcon's FFT, `LightPipes` spectral and `diffractio` CZT: 2e-02 |
 
-Four runnable experiments reproduce all of this (or run all in one pass):
+Five runnable experiments reproduce all of this (or run all in one pass):
 
 ```bash
 python -m optcon.benchmarks.run_all               # reproduce all experiments & benchmarks
@@ -116,11 +116,32 @@ python -m optcon.examples.experiment_01_guard_bench
 python -m optcon.examples.experiment_02_cross_engine
 python -m optcon.examples.experiment_03_mie_adjudication
 python -m optcon.examples.experiment_04_beam_adjudication
+python -m optcon.examples.experiment_05_cavity_thermal_tolerance
 ```
 
+Experiment 05 writes its publication figure to `docs/figures` when run from the
+source checkout. For an installed wheel, it writes to
+`optcon-artifacts/figures` in the current working directory so it never needs
+to modify `site-packages`. Choose another location with:
+
+```bash
+python -m optcon.examples.experiment_05_cavity_thermal_tolerance --output-dir artifacts
+```
 `design_a_laser` is the one to read first: it designs a two-mirror Nd:YAG
 cavity using twelve modules together, and every number in its output is either
 a closed-form relation or a contract that either holds or raises.
+
+For modal work, name the basis explicitly. Hermite-Gauss keeps the separable,
+low-memory path; Laguerre-Gauss supports radial index `p` and signed azimuthal
+charge `ell` (including vortex modes):
+
+```python
+from optcon.modes import decompose, laguerre_gauss, reconstruct
+
+mode = laguerre_gauss(x, y, p=1, ell=-1, waist=q(50.0, "um"))
+coefficients = decompose(field, waist=q(50.0, "um"), max_order=2, basis="laguerre")
+rebuilt = reconstruct(coefficients, field, waist=q(50.0, "um"), basis="laguerre")
+```
 
 ## Performance
 
@@ -242,8 +263,16 @@ python -m optcon.examples.experiment_03_mie_adjudication
 
 # 实验 04：光束传播 vs 解析解
 python -m optcon.examples.experiment_04_beam_adjudication
+python -m optcon.examples.experiment_05_cavity_thermal_tolerance
 ```
 
+Experiment 05 从源码仓库运行时会把论文图写入 `docs/figures`。安装 wheel
+后，默认写入当前工作目录下的 `optcon-artifacts/figures`，不会修改
+`site-packages`。也可以显式指定输出目录：
+
+```bash
+python -m optcon.examples.experiment_05_cavity_thermal_tolerance --output-dir artifacts
+```
 ## 实验 01 的结果（当前）
 
 16 个用例：9 个故意注入的物理错误 + 7 个合法操作。

@@ -325,6 +325,29 @@ ENGINE_SPECS: dict[str, EngineSpec] = {
 }
 
 
+def _prepare_import_compatibility(name: str) -> None:
+    """Apply narrowly-scoped compatibility shims before importing an engine.
+
+    PyMieScatt releases before 1.9 import ``scipy.integrate.trapz`` even though
+    SciPy 1.14 removed that alias.  Restoring it as a process-local
+    compatibility alias keeps the shim scoped to this optional import path
+    while allowing the differential adapter to run on supported modern SciPy.
+    """
+    if name != "PyMieScatt":
+        return
+    try:
+        import numpy as np
+        import scipy.integrate as integrate
+    except ImportError:
+        return
+    if not hasattr(integrate, "trapz"):
+        trapezoid = getattr(np, "trapezoid", None)
+        if trapezoid is None:
+            trapezoid = getattr(np, "trapz", None)
+        if trapezoid is not None:
+            integrate.trapz = trapezoid
+
+
 @lru_cache(maxsize=None)
 def import_engine(name: str) -> tuple[bool, str]:
     """Return ``(importable, message)`` for one engine, adding its path once."""
@@ -333,11 +356,34 @@ def import_engine(name: str) -> tuple[bool, str]:
         path = corpus_root() / spec.project_path
         if str(path) not in sys.path:
             sys.path.insert(0, str(path))
+    _prepare_import_compatibility(name)
     try:
         importlib.import_module(spec.module)
     except Exception as error:  # noqa: BLE001 - reported, not swallowed
         return False, f"{type(error).__name__}: {error}"
     return True, ""
+
+
+def _is_missing_engine(spec: EngineSpec, message: str) -> bool:
+    """Return whether an import failure means the engine itself is absent."""
+    return message.startswith("ModuleNotFoundError") and (
+        f"No module named '{spec.module}'" in message
+        or f'No module named "{spec.module}"' in message
+    )
+
+
+def engine_status(name: str) -> str:
+    """Return ``ready``, ``missing`` or ``error`` for an engine import.
+
+    ``missing`` means the optional package/source is not installed.  ``error``
+    means an engine was found but failed during import, which must be visible in
+    CI rather than being silently converted into a passing skip.
+    """
+    spec = engine_spec(name)
+    ok, message = import_engine(name)
+    if ok:
+        return "ready"
+    return "missing" if _is_missing_engine(spec, message) else "error"
 
 
 def engine_spec(name: str) -> EngineSpec:
@@ -370,7 +416,7 @@ def describe_engines() -> str:
     for name in sorted(ENGINE_SPECS):
         spec = ENGINE_SPECS[name]
         ok, message = import_engine(name)
-        status = "ready" if ok else "missing"
+        status = engine_status(name)
         note = spec.summary if ok else message
         lines.append(
             f"{spec.name:12s} {spec.domain:10s} {spec.length_unit:7s} "
