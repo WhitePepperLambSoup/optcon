@@ -24,9 +24,9 @@
 \address{Research School of Physics, The Australian National University, Canberra, ACT 2601, Australia}
 
 \begin{abstract}
-Computational optics and differentiable physical modeling increasingly underpin photonic inverse design, laser resonator engineering, and optical machine learning. However, conventional scientific software representations remain susceptible to four insidious classes of silent errors: dimensional confusion from bare floating-point identifiers, field-amplitude versus optical-power square-root ambiguities, unverified physical invariant violations, and pseudo-gradient discrepancies in reverse-mode automatic differentiation. Because standard numerical arrays discard physical semantics, such errors do not raise runtime exceptions, instead converging silently toward non-physical optima.
+Computational optics and numerical physical modeling increasingly underpin laser resonator engineering, guided-wave photonics, and gradient-based optical optimization. However, conventional scientific software representations remain susceptible to four subtle classes of silent numerical defects: dimensional confusion from bare floating-point identifiers, field-amplitude versus optical-power square-root ambiguities, unverified physical invariant violations, and pseudo-gradient discrepancies in gradient-based optimization. Because standard numerical arrays discard physical semantics, such errors do not raise runtime exceptions, instead converging silently toward non-physical states.
 
-In this work, we present \texttt{optcon}, a Python library that unifies algebraic physical typing, runtime invariant contracts, and rigorous integro-differential solvers. We establish: (i) an extended dimensional vector space $\mathcal{D}_\Phi$ with planar angle as an independent base dimension; (ii) an Amplitude Order Monoid $\mathcal{O}$ tracking field-versus-power provenance that algebraically prevents silent square-root discrepancies; (iii) executable operator manifolds enforcing unitarity, passivity, reciprocity, and Claerbout adjointness; (iv) a Fox-Li Fredholm integral operator solver of the second kind with Nystr\"om quadrature discretization, power relaxation, and Vainshtein asymptotic validation; and (v) a Generalized Nonlinear Schr\"odinger Equation (G-NLSE) symmetric split-step Fourier solver (SSFM) supporting higher-order dispersion ($\beta_2, \beta_3, \beta_4$), self-steepening, and Raman delayed response with machine-precision energy conservation. Furthermore, we demonstrate automated cross-engine differential testing that resolves undocumented behaviors in established optical packages. By exploiting the spatial separability of Hermite-Gauss bases, \texttt{optcon} executes modal decomposition in $0.6\,\mathrm{ms}$ on a $512 \times 512$ grid ($460\times$ acceleration).
+In this work, we present \texttt{optcon}, a Python library that unifies algebraic physical typing, runtime invariant contracts, and rigorous integro-differential solvers. We establish: (i) an extended 10-dimensional vector space $\mathcal{D}_\Phi \cong \mathbb{Q}^{10}$ with planar angle as an independent base dimension; (ii) an Amplitude Order Monoid $\mathcal{O}$ tracking field-versus-power provenance that algebraically prevents silent square-root discrepancies; (iii) executable operator manifolds enforcing unitarity, passivity, reciprocity, and Claerbout adjointness; (iv) a Fox-Li Fredholm integral operator solver with Nystr\"om quadrature discretization, power relaxation, and Vainshtein asymptotic validation; and (v) a Generalized Nonlinear Schr\"odinger Equation (G-NLSE) symmetric split-step Fourier solver (SSFM) supporting higher-order dispersion ($\beta_2, \beta_3, \beta_4$), self-steepening, and Raman delayed response with conservative energy invariance. Furthermore, we demonstrate automated cross-engine differential testing that resolves undocumented behaviors in established optical packages. By exploiting the spatial separability of Hermite-Gauss bases, \texttt{optcon} executes modal decomposition in $0.6\,\mathrm{ms}$ on a $512 \times 512$ grid ($460\times$ acceleration over naive summation).
 \end{abstract}
 
 \begin{keyword}
@@ -50,7 +50,7 @@ Computational Optics \sep Dimensional Analysis \sep Fredholm Integral Equations 
 \textbf{Distribution format:} & Git repository / PyPI package distribution \\
 \textbf{Keywords:} & Computational optics, dimensional analysis, contract programming, invariant manifolds, Fox-Li resonator, split-step Fourier method, adjoint verification. \\
 \textbf{Nature of problem:} & Scientific computing pipelines in optics routinely strip physical semantics at API boundaries, creating vulnerability to silent defects: angle-dimension confusion, amplitude-versus-power ambiguities, unverified invariant violations (unitarity, passivity, reciprocity), and adjoint operator discrepancies during gradient-based optimization. \\
-\textbf{Solution method:} & Algebraic contract enforcement via an 8D dimension abelian group $\mathcal{D}_\Phi \cong \mathbb{Z}^8$ and amplitude order monoid $\mathcal{O}$; operator invariant manifolds ($\mathcal{M}_U, \mathcal{M}_P, \mathcal{M}_R$); automated Claerbout adjoint dot-product verification; symmetric Nystr\"om Gauss-Legendre quadrature for Fredholm integral equations; symmetric second-order split-step Fourier method for generalized nonlinear Schr\"odinger equations. \\
+\textbf{Solution method:} & Algebraic contract enforcement via a 10D dimensional vector space $\mathcal{D}_\Phi \cong \mathbb{Q}^{10}$ and amplitude order monoid $\mathcal{O}$; operator invariant manifolds ($\mathcal{M}_U, \mathcal{M}_P, \mathcal{M}_R$); automated Claerbout adjoint dot-product verification; symmetric Nystr\"om Gauss-Legendre quadrature for Fredholm integral equations; symmetric second-order split-step Fourier method for generalized nonlinear Schr\"odinger equations. \\
 \textbf{Typical running time:} & 10--20 seconds for full test suite and benchmark replication. \\
 \bottomrule
 \end{tabular*}
@@ -59,7 +59,7 @@ Computational Optics \sep Dimensional Analysis \sep Fredholm Integral Equations 
 \section{Introduction}
 \label{sec:intro}
 
-Computational optics spans two primary mathematical paradigms: (i) spatial boundary-value integral equations describing open-boundary diffraction, aperture clipping, and non-Hermitian modal loss in optical resonators; and (ii) spatio-temporal initial-value partial differential equations (PDEs) governing dispersion, Kerr nonlinearity, and energy-conserving soliton dynamics in waveguides. In both paradigms, numerical modeling increasingly interfaces with differentiable physical pipelines, automated alignment agents, and gradient-based optical optimization~\cite{Hughes2019}.
+Computational optics spans two primary mathematical paradigms: (i) spatial boundary-value integral equations describing open-boundary diffraction, aperture clipping, and non-Hermitian modal loss in optical resonators; and (ii) spatio-temporal initial-value partial differential equations (PDEs) governing dispersion, Kerr nonlinearity, and energy-conserving soliton dynamics in waveguides. In both paradigms, numerical modeling increasingly interfaces with complex simulation workflows, automated alignment routines, and gradient-based optical optimization~\cite{Hughes2019}.
 
 Despite substantial computational advances, the foundational data representations employed across optical computing have remained largely unaugmented. Physical quantities are typically stripped of their dimensional provenance at API boundaries and stored as raw double-precision floating-point arrays (\texttt{float64}). This absence of semantic encapsulation exposes optical calculations to four recurring classes of silent numerical defects:
 \begin{enumerate}
@@ -74,22 +74,22 @@ To resolve these challenges, we present \texttt{optcon}, an open-source computat
 \begin{figure}[t]
 \centering
 \includegraphics[width=0.95\linewidth]{figures/fig1_semantic_architecture.pdf}
-\caption{The semantic contract and verification architecture of \texttt{optcon}, illustrating the four functional layers: applications and inverse design, closed-form optics and PDE solvers, algebraic dimensional and contract enforcement, and external solver differential adjudication.}
+\caption{The semantic contract and verification architecture of \texttt{optcon}, illustrating the four functional layers: applications and numerical optimization, closed-form optics and PDE solvers, algebraic dimensional and contract enforcement, and external solver differential adjudication.}
 \label{fig:arch}
 \end{figure}
 
 \section{Mathematical Formulation of Physical Semantic Contracts}
 \label{sec:theory}
 
-\subsection{Extended Dimensional Space with Angle as an Independent Base}
+\subsection{Extended Dimensional Space with Ten Base Dimensions}
 
 Standard SI dimensional analysis treats planar angle $\theta$ as a dimensionless ratio of arc length to radius: $\dim(\theta) = \mathsf{L}\mathsf{L}^{-1} = 1$. While mathematically consistent for analytical geometry, this convention is hazardous in optical alignment and beam propagation, where it allows an angular tilt $\theta = 0.3\,\mathrm{mrad}$ to be added directly to a scalar reflectance $R = 0.9$ without triggering an error.
 
-We formalize the dimensional space as a free abelian group $\mathcal{D}_\Phi \cong \mathbb{Z}^8$:
+We formalize the dimensional space over the ten base dimensions defined in \texttt{optcon.units} (length $\mathsf{L}$, time $\mathsf{T}$, mass $\mathsf{M}$, electric current $\mathsf{I}$, thermodynamic temperature $\Theta$, amount of substance $\mathsf{N}$, luminous intensity $\mathsf{J}$, planar angle $\Phi$, solid angle $\Omega$, and information $\mathsf{bit}$):
 \begin{equation}
-\mathbf{d} = [\alpha_{\mathsf{L}}, \alpha_{\mathsf{M}}, \alpha_{\mathsf{T}}, \alpha_{\mathsf{I}}, \alpha_{\Theta}, \alpha_{\mathsf{N}}, \alpha_{\mathsf{J}}, \alpha_{\Phi}]^T \in \mathbb{Z}^8,
+\mathbf{d} = [\alpha_{\mathsf{L}}, \alpha_{\mathsf{T}}, \alpha_{\mathsf{M}}, \alpha_{\mathsf{I}}, \alpha_{\Theta}, \alpha_{\mathsf{N}}, \alpha_{\mathsf{J}}, \alpha_{\Phi}, \alpha_{\Omega}, \alpha_{\mathsf{bit}}]^T \in \mathbb{Q}^{10}.
 \end{equation}
-where $\alpha_\Phi$ explicitly tracks the \textbf{angle dimension}. Addition and subtraction $a \pm b$ are permitted if and only if $\mathbf{d}_a = \mathbf{d}_b$. Multiplication and division satisfy group addition and subtraction: $\dim(a \cdot b) = \mathbf{d}_a + \mathbf{d}_b$ and $\dim(a / b) = \mathbf{d}_a - \mathbf{d}_b$. Trigonometric functions require an argument with $\alpha_\Phi = 1$ and map to dimensionless scalars ($\alpha_\Phi = 0$).
+While standard physical units inhabit the integer lattice $\mathbb{Z}^{10}$, rational exponents ($\mathbb{Q}^{10}$) naturally accommodate fractional powers such as spectral densities ($\mathrm{W}/\sqrt{\mathrm{Hz}}$) and optical field derivations. Addition and subtraction $a \pm b$ are permitted if and only if $\mathbf{d}_a = \mathbf{d}_b$. Multiplication and division satisfy vector addition and subtraction: $\dim(a \cdot b) = \mathbf{d}_a + \mathbf{d}_b$ and $\dim(a / b) = \mathbf{d}_a - \mathbf{d}_b$. Trigonometric functions require an argument with $\alpha_\Phi = 1$ and map to dimensionless scalars ($\alpha_\Phi = 0$).
 
 \subsection{The Amplitude Order Monoid \texorpdfstring{($\mathcal{O}$)}{(O)}}
 
@@ -98,13 +98,13 @@ To distinguish wave field amplitudes from power and intensity quantities without
     \item $k = 0$: Dimensionless scalar ratio or count (e.g., matrix operators, round trips);
     \item $k = 1$: Field amplitude (e.g., electric field $\mathbf{E}$, transmission amplitude $t = \sqrt{T}$);
     \item $k = 2$: Power, intensity, or energy (e.g., Poynting flux, power reflectance $R = |r|^2$);
-    \item $k = \bot$: Untracked / permissive numeric mode.
+    \item $k = \bot$: Untracked / permissive numeric mode (accommodating unannotated legacy arrays).
 \end{itemize}
 
 The algebraic composition laws are defined as follows:
 \begin{align}
 \text{order}(a \times b) &= \begin{cases} \bot & \text{if } \text{order}(a) = \bot \lor \text{order}(b) = \bot \\ \text{order}(a) + \text{order}(b) & \text{otherwise} \end{cases}, \\
-\text{order}(a / b) &= \begin{cases} \bot & \text{if } \text{order}(a) = \bot \lor \text{order}(b) = \bot \\ \text{order}(a) - \text{order}(b) & \text{if } \text{order}(a) \ge \text{order}(b) \\ \text{Error} & \text{if } \text{order}(a) < \text{order}(b) \end{cases}, \\
+\text{order}(a / b) &= \begin{cases} \bot & \text{if } \text{order}(a) = \bot \lor \text{order}(b) = \bot \\ \text{order}(a) - \text{order}(b) & \text{if } \text{order}(a) \ge \text{order}(b) \\ \text{AmplitudeOrderError} & \text{if } \text{order}(a) < \text{order}(b) \end{cases}, \\
 \text{order}(\sqrt{a}) &= \begin{cases} \bot & \text{if } \text{order}(a) = \bot \\ k / 2 & \text{if } \text{order}(a) = k \land k \equiv 0 \pmod 2 \\ \text{AmplitudeOrderError} & \text{if } k \equiv 1 \pmod 2 \end{cases}.
 \end{align}
 
@@ -117,14 +117,15 @@ Let $T$ be a power transmission with $\mathrm{order}(T) = 2$ and $t$ be a field 
 \end{enumerate}
 \end{theorem}
 
-\subsection{Physical Invariant Manifolds}
+\subsection{Physical Invariant Manifolds and Reciprocity Conditions}
 
-Let $\mathbf{M} \in \mathbb{C}^{N \times N}$ denote a linear optical transfer operator (e.g., Jones matrix, scattering matrix $S$, or discretized Fredholm kernel). \texttt{optcon} defines and evaluates three invariant manifolds:
+Let $\mathbf{M} \in \mathbb{C}^{N \times N}$ denote a linear optical transfer operator (e.g., Jones matrix, multi-port scattering matrix $S$, or discretized Fredholm kernel). \texttt{optcon} defines and evaluates three invariant manifolds:
 \begin{align}
 \mathcal{M}_U &= \{ \mathbf{M} \in \mathbb{C}^{N \times N} \mid \|\mathbf{M}^\dagger \mathbf{M} - \mathbf{I}\|_\infty \le \epsilon_{\mathrm{tol}} \} \quad \text{(Unitary / Lossless)}, \\
 \mathcal{M}_P &= \{ \mathbf{M} \in \mathbb{C}^{N \times N} \mid \sigma_{\max}(\mathbf{M}) \le 1 + \epsilon_{\mathrm{tol}} \} \quad \text{(Passive / Non-amplifying)}, \\
 \mathcal{M}_R &= \{ \mathbf{M} \in \mathbb{C}^{N \times N} \mid \|\mathbf{M} - \mathbf{M}^T\|_\infty \le \epsilon_{\mathrm{tol}} \} \quad \text{(Reciprocal / Symmetric)}.
 \end{align}
+Under standard symmetric port and spatial basis conventions (e.g., symmetric spatial diffraction kernels $K(x_1, x_2) = K(x_2, x_1)$ in isotropic open resonators and multi-port scattering matrices with identical reciprocal modal bases), Lorentz reciprocity is algebraically represented by matrix transposition symmetry $\mathbf{M} = \mathbf{M}^T$. In contrast, asymmetric port bases or magneto-optic non-reciprocal media (e.g., Faraday rotators) break this transposition symmetry and violate the $\mathcal{M}_R$ contract.
 
 \subsection{Claerbout Adjoint Verification}
 
@@ -143,12 +144,12 @@ Beyond closed-form ray and paraxial matrices, \texttt{optcon} provides two full-
 
 Standard paraxial ABCD matrices and Hermite-Gauss expansions assume infinite mirror apertures, predicting zero diffraction loss for stable resonators. In actual laser cavities, finite mirror apertures clip the transverse beam wings, inducing round-trip power loss and modal phase shifts~\cite{FoxLi1961,Siegman1986}.
 
-The steady-state transverse field distribution satisfies a Fredholm integral equation of the second kind:
+The steady-state transverse field distribution satisfies a Fredholm integral-operator eigenvalue problem:
 \begin{equation}
 \gamma_n u_n(x_2) = \int_{-a}^{a} K(x_1, x_2) u_n(x_1) \, dx_1,
 \label{eq:fox_li}
 \end{equation}
-where $a$ is the mirror half-width and $\gamma_n$ is the complex eigenvalue. The one-way Huygens-Fresnel diffraction kernel is given by:
+where $a$ is the mirror half-width, $u_n(x)$ is the transverse eigenmode profile, and $\gamma_n$ is the complex round-trip eigenvalue determining the fractional diffraction loss per transit $\delta_n = 1 - |\gamma_n|^2$ and modal phase shift $\Delta\phi_n = \arg(\gamma_n)$. The one-way Huygens-Fresnel diffraction kernel is given by:
 \begin{equation}
 K(x_1, x_2) = \sqrt{\frac{i}{\lambda L}} \exp\left[ -i \frac{\pi}{\lambda L} \left( g_1 x_1^2 - 2 x_1 x_2 + g_2 x_2^2 \right) \right] \exp(-i k \theta x_1),
 \end{equation}
@@ -197,53 +198,53 @@ A(z + h) = \exp\left( \frac{h}{2} \hat{D} \right) \exp\left( \int_z^{z+h} \hat{N
 \begin{figure}[t]
 \centering
 \includegraphics[width=\linewidth]{figures/fig6_nlse_soliton_raman.pdf}
-\caption{G-NLSE split-step Fourier numerical dynamics: (a) Fundamental soliton ($N=1$) propagation over 3 soliton periods ($z = 3 z_0 \approx 235.6\,\mathrm{km}$), demonstrating exact analytical shape preservation; (b) Raman soliton self-frequency shift (SSFS) over $z = 40\,\mathrm{m}$, exhibiting an asymmetric spectral redshift toward longer wavelengths; (c) Machine-precision energy conservation ($|\Delta E(z)| / E(0) < 10^{-12}$) across all 180 longitudinal propagation steps.}
+\caption{G-NLSE split-step Fourier numerical dynamics: (a) Fundamental soliton ($N=1$) propagation over 3 soliton periods ($z = 3 z_0 \approx 235.6\,\mathrm{km}$), demonstrating analytical shape preservation; (b) Raman soliton self-frequency shift (SSFS) over $z = 40\,\mathrm{m}$, exhibiting an asymmetric spectral redshift toward longer wavelengths; (c) Relative energy conservation tracking across 180 longitudinal propagation steps ($|\Delta E(z)| / E(0) < 10^{-12}$ under conservative GVD-SPM evolution, bounded within $10^{-4}$ under full Raman dynamics).}
 \label{fig:nlse}
 \end{figure}
 
-Figure~\ref{fig:nlse} illustrates the verification of the G-NLSE solver. In Figure~\ref{fig:nlse}(a), a fundamental hyperbolic secant soliton $A(0, T) = \sqrt{P_0} \operatorname{sech}(T/T_0)$ is propagated over three complete soliton periods ($z = 3 z_0 \approx 235.6\,\mathrm{km}$) in an anomalous dispersion fiber ($\beta_2 = -20\,\mathrm{ps}^2/\mathrm{km}, \gamma = 2.0\,\mathrm{W}^{-1}\mathrm{km}^{-1}, P_0 = 10.0\,\mathrm{W}$). The relative intensity profile discrepancy after $235\,\mathrm{km}$ is strictly below $10^{-4}$. In Figure~\ref{fig:nlse}(b), ultrashort pulse propagation ($T_0 = 60\,\mathrm{fs}$) with Raman scattering ($f_R = 0.18$) demonstrates the soliton self-frequency shift, shifting the optical spectrum toward longer wavelengths by $+2.8\,\mathrm{nm}$. In Figure~\ref{fig:nlse}(c), the lossless energy invariance contract is verified: the relative energy drift $|E(z) - E(0)|/E(0)$ remains below $10^{-12}$ across all 180 longitudinal steps.
+Figure~\ref{fig:nlse} illustrates the verification of the G-NLSE solver. In Figure~\ref{fig:nlse}(a), a fundamental hyperbolic secant soliton $A(0, T) = \sqrt{P_0} \operatorname{sech}(T/T_0)$ is propagated over three complete soliton periods ($z = 3 z_0 \approx 235.6\,\mathrm{km}$) in an anomalous dispersion fiber ($\beta_2 = -20\,\mathrm{ps}^2/\mathrm{km}, \gamma = 2.0\,\mathrm{W}^{-1}\mathrm{km}^{-1}, P_0 = 10.0\,\mathrm{W}$). The relative intensity profile discrepancy after $235\,\mathrm{km}$ is strictly below $10^{-4}$. In Figure~\ref{fig:nlse}(b), ultrashort pulse propagation ($T_0 = 60\,\mathrm{fs}$) with Raman scattering ($f_R = 0.18$) demonstrates the soliton self-frequency shift, shifting the optical spectrum toward longer wavelengths by $+2.8\,\mathrm{nm}$. In Figure~\ref{fig:nlse}(c), the energy invariance contract is verified: under the conservative, lossless dispersion-SPM Hamiltonian regime ($\alpha = 0, f_R = 0$), the relative energy drift $|E(z) - E(0)|/E(0)$ remains below $10^{-12}$ across all 180 longitudinal steps, while under generalized Raman dynamics and self-steepening, the numerical drift is bounded within the $10^{-4}$ contract threshold under standard discretization (512 points, 180 steps).
 
 \section{Cross-Engine Differential Testing and Findings}
 \label{sec:differential}
 
-\texttt{optcon} incorporates an automated differential testing framework that executes equivalent physical queries across independent third-party optical solvers and analytical closed forms under declared numerical tolerances.
+\texttt{optcon} incorporates an automated differential testing framework that executes equivalent physical queries across independent third-party optical solvers and analytical closed forms under declared numerical tolerances. To maintain transparency, external engines are categorized into three operational tiers: (i) built-in analytical reference engines running unconditionally in core CI suites; (ii) direct CI adapter targets with managed environments; and (iii) optional external engines evaluated within dedicated differential benchmark suites with custom compatibility shims.
 
 \begin{table}[t]
 \centering
 \small
 \resizebox{\linewidth}{!}{%
-\begin{tabular}{llcp{7.2cm}}
+\begin{tabular}{lllcp{6.5cm}}
 \toprule
-Target System & Engines Compared & Discrepancy & Adjudication \& Root Cause \\
+Target System & Engines Compared & Testing Tier & Discrepancy & Adjudication \& Root Cause \\
 \midrule
-\textbf{Mie Scattering} & \texttt{miepython} vs.\ \texttt{PyMieScatt} & $1.9 \times 10^{-3}$ & \texttt{PyMieScatt} defaults to ambient air ($n = 1.000273$) instead of vacuum; explicit index matches to $6.4 \times 10^{-14}$. \\
+\textbf{Mie Scattering} & \texttt{miepython} vs.\ \texttt{PyMieScatt} & Optional Harness (Shimmed) & $1.9 \times 10^{-3}$ & \texttt{PyMieScatt} defaults to ambient air ($n = 1.000273$) instead of vacuum; explicit index matches to $6.4 \times 10^{-14}$ against built-in series. \\
 \addlinespace
-\textbf{Beam Propagation} & \texttt{LightPipes} (Spectral vs.\ Conv) & $6.9 \times 10^{-2}$ & Convolution kernel is $2\%\sim 7\%$ wide on Gaussians; error is resolution-independent. \\
+\textbf{Beam Propagation} & \texttt{LightPipes} (\texttt{Forvard} vs.\ \texttt{Fresnel}) & Optional Harness & $6.9 \times 10^{-2}$ & Under $w_0=1.0\,\mathrm{mm}, \lambda=1064\,\mathrm{nm}, z=z_R$, convolution kernel overestimates width by $6.9\%$; error is invariant to grid resolution ($256^2 \to 4096^2$). \\
 \addlinespace
-\textbf{Thick Lens ABCD} & \texttt{optcon.elements} vs.\ \texttt{optiland} & $1.0 \times 10^{-6}$ & Demonstrates $n_1/n_2$ scaling factor in lower-right matrix entry. \\
+\textbf{Thick Lens ABCD} & \texttt{optcon.elements} vs.\ \texttt{optiland} & Reference Cross-Check & $1.0 \times 10^{-6}$ & Confirms paraxial thickness conventions and $n_1/n_2$ scaling factor in lower-right matrix entry. \\
 \addlinespace
-\textbf{Thin-Film Stacks} & \texttt{tmm\_core} vs.\ \texttt{tmm\_fast} & $4.1 \times 10^{-8}$ & Confirms consistency across distinct coordinate bases (nm vs.\ m). \\
+\textbf{Thin-Film Stacks} & \texttt{tmm\_core} vs.\ \texttt{tmm\_fast} & Direct Adapter Benchmark & $4.1 \times 10^{-8}$ & Confirms consistency across distinct coordinate and unit bases (nanometers vs.\ SI meters). \\
 \bottomrule
 \end{tabular}%
 }
-\caption{Cross-engine differential verification results and identified software behaviors.}
+\caption{Cross-engine differential verification results, testing tiers, and identified software behaviors.}
 \label{tab:discrepancies}
 \end{table}
 
 As summarized in Table~\ref{tab:discrepancies}, this differential harness has identified two notable undocumented behaviors in widely used optical software:
 \begin{enumerate}
-    \item \textbf{Mie Scattering Air Index Default}: When evaluating \texttt{miepython} against \texttt{PyMieScatt}~\cite{Sumlin2018}, a consistent $0.2\%$ discrepancy ($1.9 \times 10^{-3}$) in extinction efficiency $Q_{\mathrm{ext}}$ emerged across size parameters $x \in [0.29, 28.6]$. Adjudication against an independent Bohren-Huffman series~\cite{Bohren1983} revealed that \texttt{PyMieScatt} defaults to ambient air ($n_{\mathrm{med}} = 1.000273$). Explicitly setting $n_{\mathrm{med}} = 1.0$ restored agreement to $6.4 \times 10^{-14}$.
-    \item \textbf{Fresnel Convolution Propagator Anomaly}: In \texttt{LightPipes}~\cite{Schoenmaker2020}, comparing the convolution propagator (\texttt{Fresnel}) against the spectral propagator (\texttt{Forvard}) and the exact analytical Gaussian beam $w(z) = w_0 \sqrt{1 + (z/z_R)^2}$ revealed that \texttt{Fresnel} is consistently $2\%\sim 7\%$ wide. Crucially, increasing the grid resolution from $256 \times 256$ to $4096 \times 4096$ does not reduce the error, demonstrating that the discrepancy originates from the continuous quadratic phase kernel truncation rather than spatial undersampling.
+    \item \textbf{Mie Scattering Air Index Default}: When evaluating \texttt{miepython} against \texttt{PyMieScatt}~\cite{Sumlin2018} for a dielectric sphere ($m = 1.5 + 0.01i, \lambda = 550.0\,\mathrm{nm}$) across diameters $d \in [50, 20000]\,\mathrm{nm}$ ($x = \pi d / \lambda \in [0.29, 114.2]$), a consistent $0.15\%\sim 0.2\%$ discrepancy ($1.9 \times 10^{-3}$) in extinction efficiency $Q_{\mathrm{ext}}$ emerged. Adjudication against an independent Bohren-Huffman series implemented in \texttt{optcon.engines.reference\_mie}~\cite{Bohren1983} revealed that \texttt{PyMieScatt.MieQ} silently defaults to ambient air ($n_{\mathrm{med}} = 1.00027316$). Explicitly passing $n_{\mathrm{med}} = 1.0$ through the \texttt{optcon} adapter restored agreement to $6.4 \times 10^{-14}$ at machine precision.
+    \item \textbf{Fresnel Convolution Propagator Anomaly}: In \texttt{LightPipes}~\cite{Schoenmaker2020}, comparing the convolution propagator (\texttt{Fresnel}) against the spectral propagator (\texttt{Forvard}) and the exact analytical Gaussian beam $w(z) = w_0 \sqrt{1 + (z/z_R)^2}$ for a collimated beam ($w_0 = 1.0\,\mathrm{mm}, \lambda = 1064\,\mathrm{nm}$, Rayleigh range $z_R \approx 2.95\,\mathrm{m}$, grid window $L = 20\,\mathrm{mm}$) revealed that \texttt{Fresnel} is consistently $2.1\%\sim 6.9\%$ wide across $z \in [0.1, 4.0] z_R$, peaking at $+6.9\%$ at $z = z_R$. Crucially, increasing the spatial grid sampling from $256 \times 256$ to $4096 \times 4096$ does not attenuate the error (remaining at $6.88\%\sim 6.90\%$). This confirms that the deviation is not a discretization sampling artifact, but stems from the spatial window truncation of the continuous quadratic phase impulse response $h(x, y) = \frac{e^{ikz}}{i\lambda z} \exp\left[i \frac{k}{2z}(x^2+y^2)\right]$.
 \end{enumerate}
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=\linewidth]{figures/fig4_performance_speedup.pdf}
-\caption{Computational benchmark and differentiable adjoint verification: (a) Micro-benchmarking execution time for bare NumPy kernels versus \texttt{@checked} contract-protected boundaries across array lengths $N \in [10^1, 10^6]$; (b) Differentiable inverse design of resonator mirror alignment comparing optimization trajectories under Claerbout-verified adjoints versus flawed adjoints with boundary truncation mismatch; (c) Claerbout adjoint dot-product error tracking across iterations.}
+\caption{Computational benchmark and adjoint verification: (a) Micro-benchmarking execution time for bare NumPy kernels versus \texttt{@checked} contract-protected boundaries across array lengths $N \in [10^1, 10^6]$; (b) Illustrative differentiable cavity mirror alignment optimization comparing convergence trajectories under Claerbout-verified adjoints versus flawed adjoints with boundary truncation mismatch; (c) Claerbout adjoint dot-product error tracking across iterations.}
 \label{fig:perf}
 \end{figure}
 
-\section{Computational Performance and Differentiable Inverse Design}
+\section{Computational Performance and Adjoint Operator Verification}
 \label{sec:performance}
 
 A frequent concern in scientific software design is that semantic assertions and dimensional checks impose crippling computational overhead. To reconcile rigorous physics with numerical performance, \texttt{optcon} adheres strictly to a \textbf{boundary-only verification paradigm}: type conversions, dimensional arithmetic, and invariant assertions execute solely at API entry and exit boundaries via the \texttt{@checked} decorator, while internal kernels operate on contiguous, bare NumPy arrays.
@@ -262,9 +263,9 @@ is evaluated as a vectorized dual matrix product:
 \end{equation}
 On a $512 \times 512$ grid, this contracts the operation from $\mathcal{O}(M^2 N^2)$ elementwise traversals to two BLAS matrix multiplications, completing in $0.6\,\mathrm{ms}$ with a peak memory footprint under $0.1\,\mathrm{MiB}$.
 
-\subsection{End-to-End Differentiable Inverse Design and Adjoint Verification}
+\subsection{Illustrative Differentiable Alignment and Adjoint Verification Case Study}
 
-To evaluate \texttt{optcon}'s adjoint protection in reverse-mode automatic differentiation, we construct an end-to-end differentiable inverse design problem: automated cavity mirror alignment. An input laser beam $u_{\mathrm{in}}(x)$ is coupled into an optical cavity subject to mirror angular tilt $\theta$. The objective is to determine the optimal tilt $\theta^*$ minimizing the mode-mismatch loss:
+To evaluate \texttt{optcon}'s adjoint protection in gradient-based optical optimization workflows, we examine an illustrative differentiable cavity mirror alignment case study. An input laser beam $u_{\mathrm{in}}(x)$ is coupled into an optical cavity subject to mirror angular tilt $\theta$. The objective is to determine the optimal tilt $\theta^*$ minimizing the mode-mismatch loss:
 \begin{equation}
 \mathcal{L}(\theta) = 1 - \frac{|\langle u_{\mathrm{target}}, u_{\mathrm{out}}(\theta) \rangle|^2}{\|u_{\mathrm{target}}\|^2 \|u_{\mathrm{out}}(\theta)\|^2},
 \end{equation}
@@ -281,18 +282,18 @@ Figure~\ref{fig:perf}(b) illustrates the resulting gradient optimization traject
 \section{Discussion, Extensibility, and Conclusion}
 \label{sec:conclusion}
 
-\subsection{Extensibility to Differentiable Frameworks and Vectorial Invariants}
+\subsection{Architectural Perspectives: Staged Compilation and Vectorial Invariants}
 
-While \texttt{optcon} is currently implemented in Python and NumPy for broad accessibility, its mathematical architecture maps directly onto modern accelerated and differentiable computing environments:
+While the current release (\texttt{optcon} v0.1) is implemented in Python and executes via boundary decorators over CPU NumPy/SciPy arrays, its mathematical architecture provides clear pathways toward accelerated and full-vectorial computational physics:
 \begin{itemize}
-    \item \textbf{JIT Tracing-Time Contract Elimination}: In compilation frameworks such as JAX (\texttt{jax.jit}) and PyTorch (\texttt{torch.compile}), computation proceeds in two stages: an initial Python-level symbolic graph tracing pass, followed by XLA/Triton machine-code execution. The \texttt{@checked} decorator operates during the CPU tracing pass, verifying dimensions, amplitude orders, and operator reciprocity once before kernel compilation. Once compiled, all Python typing wrappers evaporate, providing absolute physical safety with zero GPU runtime penalty.
+    \item \textbf{Staged JIT Tracing Contract Elimination (Future Architectural Pathway)}: In compilation frameworks such as JAX (\texttt{jax.jit}) and PyTorch (\texttt{torch.compile}), computation proceeds in two stages: an initial abstract symbolic graph tracing pass, followed by lowered XLA or Triton machine-code compilation. Under this design pattern, \texttt{optcon}'s contract assertions can execute strictly during the Python-level tracing pass (staging time), validating physical dimensions, amplitude orders, and operator reciprocity before code lowering. Once compiled into hardware kernels, all dynamic Python checks are eliminated, preserving native accelerator throughput with static semantic verification.
     \item \textbf{Kramers-Kronig Dispersion and Causality Contracts}: In nanophotonics and broadband finite-difference time-domain (FDTD) simulations, fitted complex permittivities $\tilde{\epsilon}(\omega) = \epsilon'(\omega) + i \epsilon''(\omega)$ can violate physical causality, triggering numerical instability. The invariant manifold framework generalizes to a Hilbert-transform causality contract $\chi'(\omega) = \frac{2}{\pi} \mathcal{P} \int_0^\infty \frac{\Omega \chi''(\Omega)}{\Omega^2 - \omega^2} d\Omega$ and passivity constraint $\omega \epsilon''(\omega) \ge 0$.
     \item \textbf{Polarization and Mueller-Stokes Manifolds}: For full-vectorial fields, Jones transfer matrices belong to the Lie group $\mathrm{SU}(2)$ for lossless retarders, while Mueller matrices must preserve the forward light cone $S_0^2 \ge S_1^2 + S_2^2 + S_3^2$, belonging to the orthochronous proper Lorentz group $\mathrm{SO}^+(1, 3)$. Extending \texttt{optcon}'s invariant manifolds to $\mathrm{SO}^+(1, 3)$ provides automated verification against unphysical filtering in experimental polarimetry.
 \end{itemize}
 
 \subsection{Conclusion and Code Availability}
 
-\texttt{optcon} bridges the gap between high-level machine learning frameworks and rigorous physical semantics in computational optics. By tracking physical dimensions in $\mathbb{Z}^8$, separating field amplitude from optical power via the Amplitude Order Monoid $\mathcal{O}$, enforcing invariant operator contracts, and providing rigorous integro-differential solvers for open resonators and nonlinear pulse propagation, it eliminates critical classes of silent failures.
+\texttt{optcon} bridges the gap between floating-point numerical computing and rigorous physical semantics in computational optics. By tracking physical dimensions in $\mathbb{Q}^{10}$, separating field amplitude from optical power via the Amplitude Order Monoid $\mathcal{O}$, enforcing invariant operator contracts, and providing rigorous integro-differential solvers for open resonators and nonlinear pulse propagation, it eliminates critical classes of silent failures.
 
 The complete codebase, documentation, tests, and reproducibility benchmarks are open-source and available under the MIT License at:\\
 \url{https://github.com/WhitePepperLambSoup/optcon}.

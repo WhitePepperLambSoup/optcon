@@ -153,3 +153,35 @@ def test_checked_tuple_return_values():
     assert t1.amp_order == POWER
     assert t2.amp_order == POWER
 
+
+def test_checked_preserves_keyword_only_and_kwargs():
+    @checked
+    def focal_spot(
+        waist: Annotated[float, "um"],
+        *,
+        focal_length: Annotated[float, "mm"] = 100.0,
+        wavelength: Annotated[float, "nm"] = 1064.0,
+        **extra_metadata: Any,
+    ) -> Annotated[float, "um"]:
+        # check that waist, focal_length, wavelength arrive as bare floats in declared units
+        w0 = waist * 1e-6
+        f = focal_length * 1e-3
+        lam = wavelength * 1e-9
+        spot_m = (lam * f) / (3.141592653589793 * w0)
+        return spot_m * 1e6
+
+    # Test with default keyword arguments
+    res1 = focal_spot(q(50.0, "um"))
+    assert isinstance(res1, Quantity)
+    assert res1.unit.symbol == "um"
+
+    # Test with explicit keyword-only arguments as Quantities
+    res2 = focal_spot(
+        q(50.0, "um"),
+        focal_length=q(200.0, "mm"),
+        wavelength=q(532.0, "nm"),
+        tag="diagnostic",
+    )
+    assert isinstance(res2, Quantity)
+    assert res2.to_value("um") == pytest.approx(res1.to_value("um"), rel=1e-5)
+

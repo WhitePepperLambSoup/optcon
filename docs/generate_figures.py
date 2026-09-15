@@ -12,16 +12,30 @@ Usage:
 
 from __future__ import annotations
 
+import csv
 import math
 from pathlib import Path
+from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.patches import FancyBboxPatch
 
-# Output directory
+# Output directories
 FIGURES_DIR = Path(__file__).resolve().parent / "figures"
 FIGURES_DIR.mkdir(parents=True, exist_ok=True)
+DATA_DIR = Path(__file__).resolve().parent / "data"
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def save_csv(filename: str, header: list[str], rows: list[list[Any]]) -> None:
+    """Save raw numerical data to CSV for full auditability and reproducibility."""
+    path = DATA_DIR / filename
+    with path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(header)
+        writer.writerows(rows)
+    print(f"  [Saved Data] {filename}")
 
 # Publication style defaults
 plt.rcParams.update(
@@ -181,6 +195,18 @@ def generate_fig2_mie() -> None:
     plt.close(fig)
     print("  [Saved] fig2_mie_adjudication")
 
+    rows2 = [
+        [float(d), float(x), float(p_def), float(mie), float(p_exp)]
+        for d, x, p_def, mie, p_exp in zip(
+            diameters_nm, size_params, dev_pymiescatt_default, dev_miepython, dev_pymiescatt_explicit, strict=True
+        )
+    ]
+    save_csv(
+        "fig2_mie_adjudication.csv",
+        ["diameter_nm", "size_parameter_x", "dev_pymiescatt_default", "dev_miepython", "dev_pymiescatt_explicit"],
+        rows2,
+    )
+
 
 def generate_fig3_beam() -> None:
     """Figure 3: Beam propagation - spectral vs convolution vs analytical solution."""
@@ -233,6 +259,25 @@ def generate_fig3_beam() -> None:
     fig.savefig(FIGURES_DIR / "fig3_beam_propagation_anomaly.pdf", bbox_inches="tight")
     plt.close(fig)
     print("  [Saved] fig3_beam_propagation_anomaly")
+
+    rows3a = [
+        [float(z), float(np.sqrt(1.0 + z**2)), float(fv), float(fr)]
+        for z, fv, fr in zip(test_z, forvard_w, fresnel_w, strict=True)
+    ]
+    save_csv(
+        "fig3_beam_evolution.csv",
+        ["z_over_zr", "w_exact_normalized", "w_forvard_normalized", "w_fresnel_normalized"],
+        rows3a,
+    )
+    rows3b = [
+        [int(s), float(c_err), float(s_err)]
+        for s, c_err, s_err in zip(samples, error_vs_res, spectral_error * 100, strict=True)
+    ]
+    save_csv(
+        "fig3_beam_resolution.csv",
+        ["grid_samples", "convolution_error_pct", "spectral_error_pct"],
+        rows3b,
+    )
 
 
 def generate_fig4_performance() -> None:
@@ -324,6 +369,22 @@ def generate_fig4_performance() -> None:
     plt.close(fig)
     print("  [Saved] fig4_performance_speedup")
 
+    rows4a = [[int(n), float(raw), float(chk)] for n, raw, chk in zip(N_arr, t_raw_us, t_checked_us, strict=True)]
+    save_csv(
+        "fig4a_overhead_microbenchmark.csv",
+        ["array_length_N", "t_raw_us", "t_checked_us"],
+        rows4a,
+    )
+    rows4b = [
+        [int(k), float(lv), float(lf), float(ev), float(ef)]
+        for k, (lv, lf, ev, ef) in enumerate(zip(l_v, l_f, err_v, err_f, strict=True))
+    ]
+    save_csv(
+        "fig4b_alignment_optimization.csv",
+        ["iteration", "loss_verified", "loss_flawed", "adjoint_error_verified", "adjoint_error_flawed"],
+        rows4b,
+    )
+
 
 def generate_fig5_fox_li() -> None:
     """Figure 5: Fox-Li diffraction loss scaling and transverse eigenmodes."""
@@ -389,6 +450,8 @@ def generate_fig5_fox_li() -> None:
     # Subplot (c): Angular misalignment tilt
     tilts = [0.0, 100.0, 200.0]  # urad
     colors = ["#388E3C", "#F57C00", "#D32F2F"]
+    tilt_intensities = []
+    coord_mm = None
     for t_urad, col in zip(tilts, colors, strict=True):
         res_tilt = FoxLiResonator(
             q(1064, "nm"),
@@ -400,9 +463,12 @@ def generate_fig5_fox_li() -> None:
         )
         m_t = solve_fox_li_modes(res_tilt, num_modes=1, num_points=128, check_contracts=False)[0]
         u_t = np.abs(m_t.amplitude) ** 2
+        coord_mm = m_t.coordinates / 1e-3
+        norm_prof = u_t / np.max(u_t)
+        tilt_intensities.append(norm_prof)
         ax3.plot(
-            m_t.coordinates / 1e-3,
-            u_t / np.max(u_t),
+            coord_mm,
+            norm_prof,
             "-",
             color=col,
             label=rf"$\theta = {int(t_urad)}\ \mu\mathrm{{rad}}$ ($\delta={m_t.loss*100:.1f}\%$)",
@@ -418,6 +484,37 @@ def generate_fig5_fox_li() -> None:
     fig.savefig(FIGURES_DIR / "fig5_fox_li_diffraction.pdf", bbox_inches="tight")
     plt.close(fig)
     print("  [Saved] fig5_fox_li_diffraction")
+
+    rows5a = [
+        [float(nf), float(l_ff), float(v), float(l_st), float(l_cf)]
+        for nf, l_ff, v, l_st, l_cf in zip(nf_values, loss_flat, vainshtein, loss_stable, loss_confocal, strict=True)
+    ]
+    save_csv(
+        "fig5a_fox_li_loss.csv",
+        ["fresnel_number", "loss_flat_flat", "loss_vainshtein", "loss_curved_g08", "loss_confocal_g00"],
+        rows5a,
+    )
+    rows5b = [
+        [float(x), float(u0_val), float(u1_val)]
+        for x, u0_val, u1_val in zip(xi, u0 / np.max(u0), u1 / np.max(u1), strict=True)
+    ]
+    save_csv(
+        "fig5b_fox_li_modes.csv",
+        ["transverse_pos_mm", "intensity_tem0_norm", "intensity_tem1_norm"],
+        rows5b,
+    )
+    if coord_mm is not None:
+        rows5c = [
+            [float(x), float(t0), float(t100), float(t200)]
+            for x, t0, t100, t200 in zip(
+                coord_mm, tilt_intensities[0], tilt_intensities[1], tilt_intensities[2], strict=True
+            )
+        ]
+        save_csv(
+            "fig5c_fox_li_tilt.csv",
+            ["transverse_pos_mm", "intensity_0urad", "intensity_100urad", "intensity_200urad"],
+            rows5c,
+        )
 
 
 def generate_fig6_nlse() -> None:
@@ -502,6 +599,46 @@ def generate_fig6_nlse() -> None:
     fig.savefig(FIGURES_DIR / "fig6_nlse_soliton_raman.pdf", bbox_inches="tight")
     plt.close(fig)
     print("  [Saved] fig6_nlse_soliton_raman")
+
+    rows6a = [
+        [float(t), float(p_init_val), float(p_1z0_val), float(p_3z0_val)]
+        for t, p_init_val, p_1z0_val, p_3z0_val in zip(
+            t_ps,
+            np.abs(p_init.amplitude) ** 2,
+            np.abs(p_1z0.amplitude) ** 2,
+            np.abs(p_3z0.amplitude) ** 2,
+            strict=True,
+        )
+    ]
+    save_csv(
+        "fig6a_soliton_propagation.csv",
+        ["time_delay_ps", "power_initial_w", "power_1z0_w", "power_3z0_w"],
+        rows6a,
+    )
+    rows6b = [
+        [float(dl), float(s_in), float(s_no), float(s_r)]
+        for dl, s_in, s_no, s_r in zip(
+            dlam_nm,
+            spec_init / np.max(spec_init),
+            spec_no_r / np.max(spec_no_r),
+            spec_r / np.max(spec_r),
+            strict=True,
+        )
+    ]
+    save_csv(
+        "fig6b_raman_spectrum.csv",
+        ["wavelength_shift_nm", "spec_input_norm", "spec_kerr_norm", "spec_raman_norm"],
+        rows6b,
+    )
+    rows6c = [
+        [int(step_idx), float(drift)]
+        for step_idx, drift in zip(steps_arr, energy_drift, strict=True)
+    ]
+    save_csv(
+        "fig6c_energy_drift.csv",
+        ["propagation_step", "relative_energy_drift"],
+        rows6c,
+    )
 
 
 def main() -> int:

@@ -212,3 +212,39 @@ def test_numpy_ufunc_branch_coverage():
     with pytest.raises(UnitError):
         q1 ** np.array([1, 2])
 
+
+def test_amplitude_order_division_rejects_negative_order():
+    field = q(1.0, "1", amp_order=1)
+    power = q(2.0, "1", amp_order=2)
+
+    # Dividing power (order 2) by field (order 1) gives order 1
+    assert (power / field).amp_order == 1
+
+    # Dividing field (order 1) by power (order 2) would give -1, which is illegal
+    with pytest.raises(AmplitudeOrderError, match="cannot be negative"):
+        _ = field / power
+
+
+def test_amplitude_order_negative_power_rejected():
+    field = q(2.0, "1", amp_order=1)
+    with pytest.raises(AmplitudeOrderError, match="negative power"):
+        _ = field ** -1
+
+
+def test_amplitude_order_monoid_properties():
+    # Closure under valid operations in N_0
+    for o1 in [0, 1, 2, 3]:
+        for o2 in [0, 1, 2, 3]:
+            q_a = q(2.0, "1", amp_order=o1)
+            q_b = q(3.0, "1", amp_order=o2)
+            # Product adds orders
+            prod = q_a * q_b
+            assert prod.amp_order == o1 + o2
+            # Quotient
+            if o1 >= o2:
+                quot = q_a / q_b
+                assert quot.amp_order == o1 - o2
+            else:
+                with pytest.raises(AmplitudeOrderError):
+                    _ = q_a / q_b
+
