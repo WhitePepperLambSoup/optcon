@@ -32,7 +32,17 @@ dependencies = ["numpy>=1.24", "scipy>=1.10"]
 [project.optional-dependencies]
 dev = ["pytest>=7", "pytest-cov>=4.0", "ruff>=0.5", "mypy>=1.8", "matplotlib>=3.7"]
 engines = ["miepython>=2.5", "PyMieScatt>=1.7", "LightPipes>=2.1", "tmm>=0.1.8"]
-all = ["optcon[dev,engines]"]
+all = [
+  "pytest>=7",
+  "pytest-cov>=4.0",
+  "ruff>=0.5",
+  "mypy>=1.8",
+  "matplotlib>=3.7",
+  "miepython>=2.5",
+  "PyMieScatt>=1.7",
+  "LightPipes>=2.1",
+  "tmm>=0.1.8",
+]
 
 [project.urls]
 Homepage = "https://github.com/WhitePepperLambSoup/optcon"
@@ -42,13 +52,20 @@ Issues = "https://github.com/WhitePepperLambSoup/optcon/issues"
 [tool.setuptools]
 # This repository keeps the package at the top level of its own directory, so
 # the package root maps onto "." rather than the usual "src/" layout.
-packages = ["optcon", "optcon.engines"]
-package-dir = { optcon = ".", "optcon.engines" = "engines" }
+packages = ["optcon", "optcon.engines", "optcon.examples", "optcon.benchmarks"]
+package-dir = { optcon = ".", "optcon.engines" = "engines", "optcon.examples" = "examples", "optcon.benchmarks" = "benchmarks" }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = [".."]
 addopts = "-q"
+
+[tool.coverage.run]
+source = ["optcon"]
+omit = ["*/examples/*", "*/benchmarks/*"]
+
+[tool.coverage.report]
+show_missing = true
 
 [tool.ruff]
 line-length = 100

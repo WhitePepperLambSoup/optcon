@@ -50,12 +50,19 @@ MODULES = (
     "vector_fields",
     "mueller",
     "engines",
+    "examples",
+    "benchmarks",
 )
 
 
 def test_every_documented_module_imports():
     for name in MODULES:
         importlib.import_module(f"optcon.{name}")
+
+
+def test_reproducibility_entry_points_are_importable():
+    importlib.import_module("optcon.examples.experiment_05_cavity_thermal_tolerance")
+    importlib.import_module("optcon.benchmarks.run_all")
 
 
 def test_version_is_declared_and_semantic():
@@ -102,6 +109,9 @@ def test_pyproject_declares_the_licence_and_dependencies():
     assert project["license"] == "MIT"
     assert any(dep.startswith("numpy") for dep in project["dependencies"])
     assert any(dep.startswith("scipy") for dep in project["dependencies"])
+    assert "optcon[dev,engines]" not in project["optional-dependencies"]["all"]
+    assert set(project["optional-dependencies"]["dev"]).issubset(project["optional-dependencies"]["all"])
+    assert set(project["optional-dependencies"]["engines"]).issubset(project["optional-dependencies"]["all"])
 
 
 def test_an_unknown_unit_name_raises_rather_than_returning_none():

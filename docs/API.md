@@ -187,14 +187,14 @@ Laser physics for a four-level gain medium.
 
 ## `optcon.modes`
 
-Gauss-Hermite modes and the decomposition of a sampled field onto them.
+Gauss-Hermite and Laguerre-Gauss modes with explicit basis-aware decomposition and reconstruction.
 
-- `decompose` - Project ``field`` onto the Hermite-Gauss modes up to ``max_order``.
+- `decompose` - Project ``field`` onto Hermite-Gauss or Laguerre-Gauss modes up to ``max_order``.
 - `hermite_gauss` - The normalised ``HG_mn`` mode, sampled on coordinates ``x`` and ``y``.
 - `laguerre_gauss` - The normalised ``LG_p^l`` mode: a vortex of charge ``l`` when ``l != 0``.
-- `mode_content` - Modes sorted by descending power fraction.
+- `mode_content` - Modes sorted by descending power fraction in the requested basis.
 - `mode_power_fractions` - Fraction of the field's power carried by each mode.
-- `reconstruct` - Rebuild a field from coefficients, on the grid of ``field``.
+- `reconstruct` - Rebuild a field from basis coefficients on the grid of ``field``; signed Laguerre charges are supported.
 
 ## `optcon.mtf`
 

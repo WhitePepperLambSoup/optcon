@@ -37,7 +37,7 @@ optcon is the **semantic layer above them**:
    grating   thinfilm  diffraction  beam_quality  noise  interferometry
    aberrations  radiometry
                     |
-   propagation (sampled Field)  <->  modes (Gauss-Hermite basis)
+   propagation (sampled Field)  <->  modes (Hermite/Laguerre-Gauss bases)
                                                            <- closed-form optics
                     |
    units  quantity  checks  specs                          <- the type layer
@@ -204,19 +204,23 @@ ruff check .
 mypy .
 ```
 
-Engine-dependent tests skip cleanly when the engine's source is not present,
-so the suite is meaningful on a bare checkout. `OPTCON_CORPUS_ROOT` points the
-registry at a different corpus.
+Engine-dependent tests skip cleanly when an optional package or source tree is
+not present, so the suite remains meaningful on a bare checkout. The registry
+reports `ready`, `missing`, and import `error` separately;
+`python -m optcon.benchmarks.engine_status --strict` gates only Tier-1 engines
+with differential adapters. `OPTCON_CORPUS_ROOT` points the registry at a
+different corpus.
 
 ## Roadmap
 
 * Adapters for `diffractio`, `tracepy` and `pyoptools`; the registry already
   records their conventions, but a shared observable has to be defined first -
   grid alignment for diffraction, surface conventions for ray tracing.
-* A field-representation layer took its first step: `propagation.Field` carries
-  its grid, and `modes` provides the Gauss-Hermite basis with explicit
-  decomposition and reconstruction. Laguerre-Gauss modes and vectorial fields
-  are the natural next additions.
+* A field-representation layer is in place: `propagation.Field` carries its
+  grid, and `modes` provides explicit decomposition and reconstruction for both
+  separable Gauss-Hermite ``(m, n)`` modes and signed-charge Laguerre-Gauss
+  ``(p, ell)`` modes. The Hermite path retains its low-memory matrix kernel;
+  the Laguerre path uses a general basis-function kernel with index validation.
 * Adapters, not just registry entries, for the engines whose shared observable
   is still undefined: grid alignment for diffraction (`poppy`, `prysm`,
   `diffractio`), surface conventions for ray tracing (`rayoptics`,

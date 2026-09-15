@@ -11,6 +11,7 @@ from .registry import (
     corpus_root,
     describe_engines,
     engine_spec,
+    engine_status,
     is_available,
 )
 from .thinfilm import engine_units, stack_response
@@ -25,6 +26,7 @@ __all__ = [
     "corpus_root",
     "describe_engines",
     "engine_spec",
+    "engine_status",
     "engine_units",
     "format_report",
     "gaussian_beam_radius",

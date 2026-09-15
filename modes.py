@@ -1,4 +1,4 @@
-"""Gauss-Hermite modes and the decomposition of a sampled field onto them.
+"""Gauss-Hermite and Laguerre-Gauss modes for sampled optical fields.
 
 The field layer has two representations: a sampled grid
 (:class:`~optcon.propagation.Field`) and a modal basis, which is what this
@@ -6,7 +6,7 @@ module provides.  ``decompose`` and ``reconstruct`` are the only sanctioned
 way to move between them, so a calculation cannot quietly treat one as the
 other.
 
-The modes are the standard Hermite-Gauss set
+The default modes are the standard Hermite-Gauss set
 
     u_m(x) = (2/pi)^(1/4) / sqrt(2^m m! w) H_m(sqrt(2) x / w) exp(-x^2 / w^2),
 
@@ -187,10 +187,13 @@ def decompose(
     radius_of_curvature: Any = None,
     basis: str = "hermite",
 ) -> dict[tuple[int, int], complex]:
-    """Project ``field`` onto the Hermite-Gauss modes up to ``max_order``.
+    """Project ``field`` onto the requested modal basis up to ``max_order``.
 
-    Give ``radius_of_curvature`` when the field is not at a waist, otherwise
-    a curved wavefront leaks into the higher-order modes.
+    ``basis="hermite"`` returns ``(m, n)`` Hermite-Gauss orders and uses the
+    low-memory separable implementation. ``basis="laguerre"`` returns
+    ``(p, ell)`` Laguerre-Gauss radial index and azimuthal charge; ``ell`` may
+    be negative. Give ``radius_of_curvature`` when the field is not at a waist,
+    otherwise a curved wavefront leaks into higher-order modes.
     """
     if not isinstance(field, Field):
         raise TypeError("decompose expects a Field")
@@ -288,13 +291,45 @@ def mode_content(
     max_order: int = 3,
     *,
     radius_of_curvature: Any = None,
+    basis: str = "hermite",
 ) -> list[tuple[tuple[int, int], float]]:
-    """Modes sorted by descending power fraction."""
+    """Modes sorted by descending power fraction in the requested basis.
+
+    The basis is forwarded to :func:`decompose`; use ``basis="laguerre"`` for
+    ``(p, ell)`` modes and ``basis="hermite"`` for ``(m, n)`` modes.
+    """
     fractions = mode_power_fractions(
-        decompose(field, waist, max_order, radius_of_curvature=radius_of_curvature),
+        decompose(
+            field,
+            waist,
+            max_order,
+            radius_of_curvature=radius_of_curvature,
+            basis=basis,
+        ),
         field,
     )
     return sorted(fractions.items(), key=lambda item: -item[1])
+
+
+def _validate_coefficients(
+    coefficients: dict[tuple[int, int], complex], basis: str
+) -> None:
+    if basis not in {"hermite", "laguerre"}:
+        raise ValueError(f"basis must be 'hermite' or 'laguerre', got {basis!r}")
+    if not coefficients:
+        raise ValueError("coefficients cannot be empty")
+    for mode in coefficients:
+        if not isinstance(mode, tuple) or len(mode) != 2:
+            raise ValueError(f"mode indices must be 2-tuples, got {mode!r}")
+        first, second = mode
+        if not isinstance(first, (int, np.integer)) or not isinstance(
+            second, (int, np.integer)
+        ):
+            raise ValueError(f"mode indices must be integers, got {mode!r}")
+        if first < 0:
+            raise ValueError(f"radial index/order cannot be negative, got {mode!r}")
+        if basis == "hermite" and second < 0:
+            raise ValueError(f"mode orders cannot be negative, got {mode!r}")
 
 
 def reconstruct(
@@ -303,17 +338,39 @@ def reconstruct(
     waist: Any,
     *,
     radius_of_curvature: Any = None,
+    basis: str = "hermite",
 ) -> Field:
-    """Rebuild a field from coefficients, on the grid of ``field``.
+    """Rebuild a field from coefficients in the requested modal basis.
 
-    The waist has to be given because it is the basis the coefficients are
-    expressed in, and a modal description without its basis is meaningless -
-    which is the whole point of keeping the two representations apart.
+    For ``basis="hermite"`` the separable matrix-product implementation is
+    retained.  For ``basis="laguerre"`` the azimuthal charge is the second
+    index and may be negative; reconstruction therefore uses the general
+    basis-function path rather than treating a negative charge as an array
+    index.
     """
     if not isinstance(field, Field):
         raise TypeError("reconstruct expects the field whose grid should be reused")
+    _validate_coefficients(coefficients, basis)
     axis = field.coordinates
     local_waist = _waist_in(waist, field.spacing.unit, "reconstruct")
+    quantum_waist = Quantity(local_waist, field.spacing.unit)
+
+    if basis == "laguerre":
+        x, y = np.meshgrid(axis, axis)
+        total = np.zeros_like(field.amplitude, dtype=complex)
+        for (radial, charge), value in coefficients.items():
+            total += value * _basis_function(
+                basis,
+                x,
+                y,
+                int(radial),
+                int(charge),
+                quantum_waist,
+                radius_of_curvature=radius_of_curvature,
+                wavelength=field.wavelength,
+            )
+        return Field(total, field.spacing, field.wavelength)
+
     # Rebuild through a small coefficient matrix instead of one full 2-D mode
     # array per coefficient: sum_mn C[m, n] u_m(x) u_n(y) is U C U^T.
     highest = max(max(first, second) for first, second in coefficients)
@@ -330,7 +387,7 @@ def reconstruct(
             columns *= np.exp(1.0j * wave_number * axis**2 / (2.0 * curvature))
     matrix = np.zeros((highest + 1, highest + 1), dtype=complex)
     for (first, second), value in coefficients.items():
-        matrix[first, second] = value
+        matrix[int(first), int(second)] = value
     # U is indexed [coordinate, order], and the field is indexed [y, x]
     profiles = columns.T
     total = profiles @ matrix @ profiles.T

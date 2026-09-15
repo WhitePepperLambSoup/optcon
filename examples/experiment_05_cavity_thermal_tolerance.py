@@ -9,15 +9,19 @@ This experiment provides a realistic physical research workflow:
 3. Evaluates cavity stability and mode waist distortion under intracavity
    thermal lensing via round-trip ABCD transfer matrices.
 4. Generates a publication-grade 3-panel scientific figure:
-   docs/figures/fig4_cavity_tolerance.png.
+   docs/figures/fig4_cavity_tolerance.png (or a caller-selected output directory).
 
 Run:
     python -m optcon.examples.experiment_05_cavity_thermal_tolerance
+    python -m optcon.examples.experiment_05_cavity_thermal_tolerance --output-dir artifacts
 """
 
 from __future__ import annotations
 
+import argparse
 import math
+import os
+from dataclasses import dataclass
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -30,7 +34,135 @@ from optcon.modes import decompose, hermite_gauss
 from optcon.propagation import Field
 
 
-def run_experiment() -> dict[str, float]:
+@dataclass(frozen=True)
+class ThermalPoint:
+    """ABCD-derived response for one thermal-lens diopter value."""
+
+    diopter_d_m: float
+    stability_product: float
+    waist_um: float
+    coupling: float
+    stable: bool
+
+
+def _thermal_point(
+    diopter_d_m: float,
+    *,
+    length_m: float,
+    radius_c: Quantity,
+    wavelength_m: float,
+    nominal_waist_m: float,
+) -> ThermalPoint:
+    """Evaluate one thermal lens directly from its round-trip ABCD matrix."""
+    focal_length_m = 1e9 if abs(diopter_d_m) < 1e-4 else 1.0 / diopter_d_m
+    half_space = free_space(q(length_m / 2.0, "m"))
+    mirror = curved_mirror(radius_c)
+    lens = thin_lens(q(focal_length_m, "m"))
+    round_trip = compose(half_space, mirror, half_space, lens, half_space, mirror, half_space).matrix
+
+    determinant = np.linalg.det(round_trip)
+    if abs(determinant - 1.0) >= 1e-6:
+        raise AssertionError(f"Symplectic energy violation: det(M) = {determinant}")
+
+    a = float(round_trip[0, 0])
+    b = float(round_trip[0, 1])
+    d_elem = float(round_trip[1, 1])
+    half_trace = (a + d_elem) / 2.0
+    stability_product = (half_trace + 1.0) / 2.0
+    stable = abs(half_trace) < 0.999 and abs(b) > 1e-9 and stability_product > 0.0
+    if not stable:
+        return ThermalPoint(diopter_d_m, stability_product, float("nan"), 0.0, False)
+
+    waist_sq = (wavelength_m * abs(b)) / (math.pi * math.sqrt(1.0 - half_trace**2))
+    waist_m = math.sqrt(waist_sq)
+    coupling = 4.0 / ((nominal_waist_m / waist_m + waist_m / nominal_waist_m) ** 2)
+    return ThermalPoint(diopter_d_m, stability_product, waist_m * 1e6, coupling, True)
+
+
+def _interpolate_crossing(
+    left_x: float, left_y: float, right_x: float, right_y: float, level: float
+) -> float:
+    """Linearly interpolate a threshold crossing between two samples."""
+    if right_y == left_y:
+        return float((left_x + right_x) / 2.0)
+    fraction = (level - left_y) / (right_y - left_y)
+    return float(left_x + fraction * (right_x - left_x))
+
+
+def _downward_threshold(axis: np.ndarray, values: np.ndarray, level: float) -> float:
+    """Return the first x where a descending curve falls below ``level``."""
+    for index in range(1, len(axis)):
+        if values[index] < level <= values[index - 1]:
+            return _interpolate_crossing(
+                float(axis[index - 1]),
+                float(values[index - 1]),
+                float(axis[index]),
+                float(values[index]),
+                level,
+            )
+    return float(axis[-1])
+
+
+def _thermal_thresholds(
+    diopters: np.ndarray, coupling: np.ndarray, level: float = 0.9
+) -> tuple[float, float, float]:
+    """Find the contiguous 90% coupling interval containing zero diopters."""
+    zero = int(np.argmin(np.abs(diopters)))
+    if not np.isfinite(coupling[zero]) or coupling[zero] < level:
+        return float("nan"), float("nan"), float("nan")
+
+    lower = zero
+    while lower > 0 and np.isfinite(coupling[lower - 1]) and coupling[lower - 1] >= level:
+        lower -= 1
+    upper = zero
+    while upper + 1 < len(diopters) and np.isfinite(coupling[upper + 1]) and coupling[upper + 1] >= level:
+        upper += 1
+
+    if lower == 0:
+        negative = float(diopters[0])
+    else:
+        negative = _interpolate_crossing(
+            float(diopters[lower - 1]),
+            float(coupling[lower - 1]),
+            float(diopters[lower]),
+            float(coupling[lower]),
+            level,
+        )
+    if upper == len(diopters) - 1:
+        positive = float(diopters[-1])
+    else:
+        positive = _interpolate_crossing(
+            float(diopters[upper]),
+            float(coupling[upper]),
+            float(diopters[upper + 1]),
+            float(coupling[upper + 1]),
+            level,
+        )
+    return negative, positive, min(abs(negative), positive)
+
+
+def _resolve_figures_dir(output_dir: str | Path | None) -> Path:
+    """Choose a writable artifact directory for the generated figure.
+
+    Source-tree runs preserve the manuscript layout under ``docs/figures``.
+    Installed wheels do not ship that directory, so they write to a clearly
+    named directory in the caller's working tree instead of attempting to
+    modify ``site-packages``.  ``OPTCON_OUTPUT_DIR`` and the explicit argument
+    override both defaults.
+    """
+    if output_dir is not None:
+        return Path(output_dir)
+    configured = os.environ.get("OPTCON_OUTPUT_DIR")
+    if configured:
+        return Path(configured)
+    package_root = Path(__file__).resolve().parent.parent
+    source_figures = package_root / "docs" / "figures"
+    if source_figures.is_dir():
+        return source_figures
+    return Path.cwd() / "optcon-artifacts" / "figures"
+
+
+def run_experiment(output_dir: str | Path | None = None) -> dict[str, float]:
     print("=" * 72)
     print("  Experiment 05: Laser Cavity Alignment & Thermal Tolerance Budget")
     print("=" * 72)
@@ -121,55 +253,42 @@ def run_experiment() -> dict[str, float]:
     # 3. Thermal Lensing Perturbation Sweep (Diopters D = 1/f_th)
     print("\n--- Sweeping Thermal Lens Power D_th (-35 to +15 m^-1) ---")
     diopters = np.linspace(-35.0, 15.0, 51)
-    g_prod_thermal = []
-    waist_thermal_um = []
-    coupling_thermal = []
-
-    # Nominal waist position is at z = L/2 (symmetric cavity)
-    # Thin thermal lens at cavity center: f_th = 1 / D
-    for d in diopters:
-        if abs(d) < 1e-4:
-            f_th = 1e9
-        else:
-            f_th = 1.0 / d
-
-        # Round-trip ABCD from cavity center in beam order:
-        # center -> space(L/2) -> mirror(R) -> space(L/2) -> center(lens) -> space(L/2) -> mirror(R) -> space(L/2) -> center
-        space = free_space(q(length_m / 2.0, "m"))
-        mirror = curved_mirror(radius_c)
-        lens = thin_lens(q(f_th, "m"))
-        round_trip_tm = compose(space, mirror, space, lens, space, mirror, space)
-        round_trip = round_trip_tm.matrix
-
-        # Verify physical passivity: determinant of ABCD ray matrix must equal unity
-        det = np.linalg.det(round_trip)
-        assert abs(det - 1.0) < 1e-6, f"Symplectic energy violation: det(M) = {det}"
-
-        a = round_trip[0, 0]
-        b = round_trip[0, 1]
-        d_elem = round_trip[1, 1]
-
-        # Stability parameter: m = (A + D) / 2, stable if -1 <= m <= 1
-        m_val = (a + d_elem) / 2.0
-        # g1*g2 = (m + 1) / 2
-        g_eff = (m_val + 1.0) / 2.0
-        g_prod_thermal.append(g_eff)
-
-        if abs(m_val) < 0.999 and abs(b) > 1e-9 and g_eff > 0.0:
-            # Eigenmode spot size: w_c^2 = (lambda |B|) / (pi sqrt(1 - m^2))
-            wc_sq = (wavelength_m * abs(b)) / (math.pi * math.sqrt(1.0 - m_val**2))
-            wc = math.sqrt(wc_sq)
-            waist_thermal_um.append(wc * 1e6)
-            # Overlap efficiency between nominal w0 and thermal wc:
-            # eta = 4 / (w0/wc + wc/w0)^2
-            eta = 4.0 / ((w0_m / wc + wc / w0_m) ** 2)
-            coupling_thermal.append(eta)
-        else:
-            waist_thermal_um.append(np.nan)
-            coupling_thermal.append(0.0)
+    thermal_points = [
+        _thermal_point(
+            float(diopter),
+            length_m=length_m,
+            radius_c=radius_c,
+            wavelength_m=wavelength_m,
+            nominal_waist_m=w0_m,
+        )
+        for diopter in diopters
+    ]
+    g_prod_thermal = np.asarray(
+        [point.stability_product for point in thermal_points], dtype=float
+    )
+    waist_thermal_um = np.asarray(
+        [point.waist_um for point in thermal_points], dtype=float
+    )
+    coupling_thermal = np.asarray(
+        [point.coupling for point in thermal_points], dtype=float
+    )
+    thermal_90pct_negative_limit_d_m, thermal_90pct_positive_limit_d_m, thermal_90pct_budget_abs_d_m = (
+        _thermal_thresholds(diopters, coupling_thermal, level=0.9)
+    )
+    min_thermal_coupling = float(np.min(coupling_thermal))
+    tilt_90pct_threshold_urad = _downward_threshold(
+        tilts_urad, np.asarray(p_tem00_num, dtype=float), level=0.9
+    )
+    print(f"  90% TEM00 tilt threshold: {tilt_90pct_threshold_urad:.1f} urad")
+    print(
+        "  90% thermal coupling interval: "
+        f"[{thermal_90pct_negative_limit_d_m:.2f}, "
+        f"{thermal_90pct_positive_limit_d_m:.2f}] m^-1"
+    )
+    print(f"  Conservative thermal budget: |D_th| < {thermal_90pct_budget_abs_d_m:.2f} m^-1")
 
     # 4. Generate Publication-Quality Figure
-    figures_dir = Path(__file__).resolve().parent.parent / "docs" / "figures"
+    figures_dir = _resolve_figures_dir(output_dir)
     figures_dir.mkdir(parents=True, exist_ok=True)
     fig_path = figures_dir / "fig4_cavity_tolerance.png"
 
@@ -211,16 +330,16 @@ def run_experiment() -> dict[str, float]:
     # Panel (c): 2D Tolerance Map
     ax2 = axes[2]
     tilt_mesh, d_mesh = np.meshgrid(np.linspace(0.0, 2500.0, 60), np.linspace(-30.0, 10.0, 60))
-    # Combined coupling: eta_tilt * eta_thermal
+    # Combined coupling: eta_tilt * eta_thermal.  Interpolate the same
+    # ABCD-derived thermal sweep used in panel (b), rather than introducing
+    # a second hard-coded approximation for the tolerance map.
     tilt_loss = np.exp(-((tilt_mesh * 1e-6) / theta_div_rad) ** 2)
-    # Physical thermal mismatch efficiency
-    m_arr = -0.5 - d_mesh * (length_m / 2.0 * (1.0 - length_m / 0.20))
-    # Stable mask
-    stable_mask = (m_arr > -1.0) & (m_arr < 1.0)
-    b_const = length_m * (1.0 - length_m / (4.0 * 0.10))
-    wc_mesh = np.sqrt(np.where(stable_mask, (wavelength_m * abs(b_const)) / (math.pi * np.sqrt(np.clip(1.0 - m_arr**2, 1e-6, 1.0))), np.nan))
-    thermal_loss = np.where(stable_mask, 4.0 / ((w0_m / wc_mesh + wc_mesh / w0_m) ** 2), 0.0)
-    eta_total = tilt_loss * np.clip(thermal_loss, 0.0, 1.0)
+    thermal_loss_mesh = np.interp(
+        d_mesh.ravel(),
+        diopters,
+        coupling_thermal,
+    ).reshape(d_mesh.shape)
+    eta_total = tilt_loss * np.clip(thermal_loss_mesh, 0.0, 1.0)
 
     contour = ax2.contourf(tilt_mesh, d_mesh, eta_total, levels=np.linspace(0.0, 1.0, 11), cmap="viridis")
     cbar = fig.colorbar(contour, ax=ax2)
@@ -239,13 +358,26 @@ def run_experiment() -> dict[str, float]:
 
     return {
         "max_tilt_discrepancy": max_tilt_discrepancy,
+        "tilt_90pct_threshold_urad": tilt_90pct_threshold_urad,
+        "thermal_90pct_negative_limit_d_m": thermal_90pct_negative_limit_d_m,
+        "thermal_90pct_positive_limit_d_m": thermal_90pct_positive_limit_d_m,
+        "thermal_90pct_budget_abs_d_m": thermal_90pct_budget_abs_d_m,
+        "min_thermal_coupling": min_thermal_coupling,
         "nominal_waist_um": w0_m * 1e6,
         "finesse": cav_finesse,
     }
 
 
-def main() -> int:
-    res = run_experiment()
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=None,
+        help="directory for generated figures (or set OPTCON_OUTPUT_DIR)",
+    )
+    args = parser.parse_args(argv)
+    res = run_experiment(output_dir=args.output_dir)
     print("\n" + "#" * 72)
     print(f"  Experiment 05 Completed Successfully! Discrepancy: {res['max_tilt_discrepancy']:.2e}")
     print("#" * 72)

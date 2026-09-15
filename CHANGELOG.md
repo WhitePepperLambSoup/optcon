@@ -6,6 +6,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `modes` now supports explicit `basis="laguerre"` decomposition, content
+  reporting, and reconstruction for signed-charge Laguerre-Gauss `(p, ell)`
+  modes, with validation that prevents negative-index aliasing.
+- Experiment 05 now returns computed angular and thermal 90% coupling
+  thresholds and builds its 2-D map from the same ABCD-derived sweep.
+- `benchmarks.engine_status` reports optional engines as PASS, SKIP, or FAIL,
+  with a strict Tier-1 CI gate.
+- Reproducibility examples and benchmarks are included in the wheel.
+
 ### Changed
 
 - Modal decomposition and reconstruction now use the separability of the
@@ -99,7 +110,7 @@ First cut. The API is usable but not frozen.
   `optcon_reference` (Mie) and `optcon_beam_reference` (closed-form Gaussian).
 - `engines/differential.py` - cross-engine differential testing
   (`compare_across_engines`, `assert_engines_agree`).
-- Four experiments in `examples/` covering guard quality, cross-engine
+- Five experiments in `examples/` covering guard quality, cross-engine
   agreement, Mie adjudication and beam-propagation adjudication.
 - Packaging and project infrastructure: `pyproject.toml`, `LICENSE`, `CI`,
   `CONTRIBUTING.md`, `docs/DESIGN.md`.

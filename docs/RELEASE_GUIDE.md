@@ -6,11 +6,13 @@ This guide provides step-by-step instructions for publishing **optcon** and subm
 
 ## 1. Prerequisites Checklist
 
-Before submitting to any journal or indexing service:
-- [x] All unit tests pass: `pytest tests/` (428 passed, 98% statement coverage).
-- [x] Type checking passes: `mypy .` (0 errors across 81 files).
-- [x] Linter passes: `ruff check .`.
-- [x] Benchmark suite passes: `python -m benchmarks.run_all`.
+Before submitting to any journal or indexing service, run the gates below from the repository root:
+- [x] 419 tests collected and passing locally: `python -m pytest tests -q`.
+- [x] Core-library coverage is 88% statement coverage when examples and benchmark entry points are excluded by `pyproject.toml`: `python -m pytest tests --cov=optcon --cov-report=term-missing`.
+- [x] Type checking: `python -m mypy .` (0 errors across 88 source files in the latest local run).
+- [x] Linter: `python -m ruff check .`.
+- [x] Reproducibility suite: `python -m optcon.benchmarks.run_all`.
+- [x] Optional-engine status: `python -m optcon.benchmarks.engine_status --strict`.
 - [x] OSI License: MIT License in `LICENSE`.
 - [x] JOSS metadata: `paper.md` and `paper.bib` with complete author affiliations.
 - [x] CITATION file: `CITATION.cff` with metadata and BibTeX entry.
