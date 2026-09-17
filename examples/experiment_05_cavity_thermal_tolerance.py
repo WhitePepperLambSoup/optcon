@@ -8,8 +8,7 @@ This experiment provides a realistic physical research workflow:
    projection against analytical paraxial perturbation theory.
 3. Evaluates cavity stability and mode waist distortion under intracavity
    thermal lensing via round-trip ABCD transfer matrices.
-4. Generates a publication-grade 3-panel scientific figure:
-   docs/figures/fig4_cavity_tolerance.png (or a caller-selected output directory).
+4. Generates a three-panel diagnostic plot in a caller-selected artifact directory.
 
 Run:
     python -m optcon.examples.experiment_05_cavity_thermal_tolerance
@@ -144,21 +143,13 @@ def _thermal_thresholds(
 def _resolve_figures_dir(output_dir: str | Path | None) -> Path:
     """Choose a writable artifact directory for the generated figure.
 
-    Source-tree runs preserve the manuscript layout under ``docs/figures``.
-    Installed wheels do not ship that directory, so they write to a clearly
-    named directory in the caller's working tree instead of attempting to
-    modify ``site-packages``.  ``OPTCON_OUTPUT_DIR`` and the explicit argument
-    override both defaults.
+    ``OPTCON_OUTPUT_DIR`` and the explicit argument override the default.
     """
     if output_dir is not None:
         return Path(output_dir)
     configured = os.environ.get("OPTCON_OUTPUT_DIR")
     if configured:
         return Path(configured)
-    package_root = Path(__file__).resolve().parent.parent
-    source_figures = package_root / "docs" / "figures"
-    if source_figures.is_dir():
-        return source_figures
     return Path.cwd() / "optcon-artifacts" / "figures"
 
 

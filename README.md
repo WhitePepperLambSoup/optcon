@@ -94,19 +94,19 @@ sqrt(amplitude_ratio(0.9))       # -> AmplitudeOrderError: that is a sqrt too fa
 | `mueller` | Stokes vectors and Mueller matrices, including depolarisation |
 | `engines` | registry and adapters for external solvers, plus differential testing |
 
-## What the differential tests found
+## Differential verification
 
-The repository distinguishes measurements that can be rerun in the current environment from optional or survey-only engine records. The current figure-generation run measured:
+The repository separates runnable adapter checks from registry-only engine records. The current checks cover:
 
 | Finding | Current evidence |
 | --- | --- |
-| `miepython` versus the independent `optcon_reference` series | Maximum relative discrepancy `1.77e-10` over five diameters; see `docs/data/fig2_mie_adjudication.csv`. |
+| `miepython` versus the independent `optcon_reference` series | Maximum relative discrepancy `1.77e-10` over five diameters. |
 | PyMieScatt with explicit `nMedium=1.0` versus the independent reference | Maximum relative discrepancy `3.06e-7` over five diameters; the adapter states the medium explicitly. |
 | PyMieScatt library-default medium characterization | Maximum relative discrepancy `1.50e-3` over five diameters, showing that the default changes the physical query. |
 | LightPipes `Fresnel` versus the Gaussian closed form | About `6.9%` excess width at `z=z_R`, persistent from 256 to 4096 samples; `Forvard` remains within about `6.52e-9` at that point. |
-| Registry-only engines | Conventions are recorded, but numerical claims are withheld when the dependency or shared observable is unavailable. |
+| Registry-only engines | The registry records conventions and availability; a numerical comparison needs an installed adapter and a shared observable. |
 
-All generated curves are accompanied by CSV exports under `docs/data`. Optional-engine status is reported by `python -m optcon.benchmarks.engine_status` and distinguishes `ready`, `missing`, and import `error`.
+Optional-engine status is reported by `python -m optcon.benchmarks.engine_status` and distinguishes `ready`, `missing`, and import `error`.
 
 The runnable examples reproduce the available checks (or run all in one pass):
 
@@ -120,10 +120,8 @@ python -m optcon.examples.experiment_04_beam_adjudication
 python -m optcon.examples.experiment_05_cavity_thermal_tolerance
 ```
 
-Experiment 05 writes its publication figure to `docs/figures` when run from the
-source checkout. For an installed wheel, it writes to
-`optcon-artifacts/figures` in the current working directory so it never needs
-to modify `site-packages`. Choose another location with:
+Experiment 05 writes its plot to `optcon-artifacts/figures` in the current
+working directory. Choose another location with:
 
 ```bash
 python -m optcon.examples.experiment_05_cavity_thermal_tolerance --output-dir artifacts
@@ -152,11 +150,18 @@ Run the local benchmark with:
 python -m optcon.benchmarks.bench
 ```
 
-The benchmark uses best-of-three wall times, reports peak traced allocation, and writes the same measurements to `docs/data/benchmark_operations.csv`. The current recorded run measured the order-3 modal decomposition at `0.0006535 s` and `0.0997 MiB`, versus `0.2784134 s` and `16.0086 MiB` for the correctness-matched naive two-dimensional baseline. The corresponding timing ratio is approximately `4.26e2` for that run. Other recorded best times were `0.0076406 s` for Fresnel propagation, `0.0148482 s` for angular-spectrum propagation, `0.0067240 s` for MTF from a PSF, and `0.0011754 s` for field construction. These values are machine-specific and should be regenerated rather than treated as fixed performance guarantees; environment provenance is stored in the CSV.
+The benchmark uses best-of-three wall times, reports peak traced allocation,
+and writes environment provenance to
+`optcon-artifacts/benchmarks/benchmark_operations.csv`. Results are local
+measurements, so regenerate them before comparing machines.
 
-The separate Figure 4(a) micro-benchmark uses one warm-up followed by seven timed calls and reports the median. At array length `10`, the raw and checked phase kernels took `4.30 us` and `26.70 us`; at array length `10^6`, they took `32.682 ms` and `31.689 ms`, respectively. Across the sampled lengths, the ratio ranged from `0.970` to `6.209`; fixed boundary cost is visible at small sizes, while timing variability and the vectorized kernel dominate at large sizes. The order reversal is not interpreted as negative checking overhead.
+Run solver refinement checks with:
 
-Solver discretization evidence is recorded separately in `docs/data/solver_convergence.csv`. Fox-Li candidates are compared with a 512-point numerical reference, and G-NLSE candidates with a 400-step numerical reference. These are finer discretizations of the same implementation and configuration, not analytic or exact continuum solutions; the observed G-NLSE refinement is approximately second order over the resolved ranges, while no asymptotic order is claimed for the Fox-Li plateau.
+```bash
+python -m optcon.benchmarks.convergence
+```
+
+The command writes `optcon-artifacts/benchmarks/solver_convergence.csv`.
 
 ## Key Design Principles
 

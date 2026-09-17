@@ -11,7 +11,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 
 - A correctness-matched naive two-dimensional modal-decomposition baseline and regression tests for the benchmark comparison.
-- Figure data provenance for availability-sensitive external-engine measurements.
 - Separate one-way and round-trip Fox-Li loss fields.
 - Regression coverage for negative amplitude orders, keyword-only checked arguments, complex adjoints, engine import errors, and G-NLSE self-steepening.
 
@@ -22,9 +21,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Complex adjoint checks use the Hermitian inner product via `numpy.vdot`.
 - The G-NLSE nonlinear path uses fourth-order Runge-Kutta for Raman and self-steepening terms and the corrected Fourier multiplier for the configured FFT convention.
 - Engine status distinguishes `ready`, `missing`, and import `error`.
-- Figure generation measures available engines at runtime, exports raw CSV data, and withholds curves for unavailable optional dependencies.
-- The modal benchmark reports machine-specific best-of-three measurements and writes exact results with environment provenance to `docs/data/benchmark_operations.csv`. The current recorded run measured 0.0006535 s for the separable path and 0.2784134 s for the naive baseline, a ratio of approximately `4.26e2`. Solver discretization data are also exported to `docs/data/solver_convergence.csv`.
-- Manuscript and documentation claims now distinguish current measurements, optional experiments, and engine-registry metadata from completed numerical comparisons.
+- The modal benchmark reports machine-specific best-of-three measurements with environment provenance under `optcon-artifacts/benchmarks`.
 
 ## [0.1.0]
 
@@ -111,20 +108,17 @@ First cut. The API is usable but not frozen.
 ### Historical and optional findings
 
 - The PyMieScatt default-medium experiment is retained as a conditional
-  characterization in `examples/experiment_03_mie_adjudication.py`. It is not
-  counted as current evidence when its optional dependencies are unavailable.
+  check in `examples/experiment_03_mie_adjudication.py`. It runs when the
+  optional dependencies are installed.
 - In the current stated finite-window configuration, LightPipes' convolution
   propagator produces a wider Gaussian radius than the closed form, while the
-  spectral propagator tracks the closed form closely. Exact values and engine
-  provenance are recorded in `docs/data/fig3_beam_resolution.csv` and
-  `docs/data/fig4_provenance.csv`.
+  spectral propagator tracks the closed form closely. The example reports the
+  configuration and measured values when LightPipes is available.
 
 ### Validation coverage
 
-- Current measured comparisons, their tolerances, and environment provenance
-  are generated into `docs/data/`.
-- Optional third-party comparisons run only when their dependencies import and
-  a convention-matched observable is available.
-- Closed-form and internal cross-route checks remain in the test suite and
-  should be interpreted from the current test assertions, not historical
-  machine-specific values in this changelog.
+- Optional third-party comparisons run when their dependencies import and a
+  convention-matched observable is available.
+- Closed-form and internal cross-route checks remain in the test suite. Timing
+  and platform details belong to the generated benchmark output, not this
+  changelog.

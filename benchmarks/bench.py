@@ -33,7 +33,10 @@ WAIST_UM = 50.0
 LAMBDA_NM = 633.0
 EXTENT_UM = 1600.0
 BENCHMARK_DATA_PATH = (
-    Path(__file__).resolve().parents[1] / "docs" / "data" / "benchmark_operations.csv"
+    Path(__file__).resolve().parents[1]
+    / "optcon-artifacts"
+    / "benchmarks"
+    / "benchmark_operations.csv"
 )
 
 

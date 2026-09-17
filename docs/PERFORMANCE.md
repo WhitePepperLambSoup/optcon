@@ -1,60 +1,60 @@
-# Performance and memory
+# Performance
 
-`optcon` uses NumPy and SciPy for numerical kernels. The main cost centres are FFT propagation, modal basis evaluation, and temporary arrays created by naive two-dimensional mode construction. This document records the benchmark protocol and the current reproducibility measurements; it does not promise hardware-independent speedups.
+`optcon` uses NumPy and SciPy for its numerical kernels. FFT propagation,
+modal decomposition, and temporary two-dimensional arrays account for most of
+the runtime and memory use.
 
-## How to measure it
+Run the benchmark from the repository root:
 
 ```bash
 python -m optcon.benchmarks.bench
 ```
 
-The benchmark reports best-of-three wall times and peak traced allocation, and writes exact values with environment provenance to `docs/data/benchmark_operations.csv`. The modal comparison uses a $512\times512$ grid and order 3. The Figure 4(a) boundary test uses one warm-up followed by seven timed calls, summarized by the median, and is stored separately in `docs/data/fig4a_overhead_microbenchmark.csv`.
-
-## Modal decomposition
-
-A Hermite-Gauss mode is separable, $u_{mn}(x,y)=u_m(x)u_n(y)$. The coefficient matrix can therefore be evaluated as a pair of matrix products rather than by materialising a full two-dimensional mode for every $(m,n)$:
+The command reports best-of-three wall times and peak traced allocation. It
+writes the full results, Python version, and platform string to:
 
 ```text
-C = dx^2 (U^H F U*)^T
+optcon-artifacts/benchmarks/benchmark_operations.csv
 ```
 
-The transpose follows the repository's `[y, x]` field layout. When the field contains wavefront curvature, conjugation must be applied consistently; the regression suite covers that case.
+## Modal baseline
 
-The current recorded run measured:
+Hermite-Gauss modes are separable:
 
-| Operation | Time | Peak traced allocation |
-| :--- | ---: | ---: |
-| Separable modal decomposition | 0.0006535 s | 0.0997 MiB |
-| Correctness-matched naive baseline | 0.2784134 s | 16.0086 MiB |
+```text
+u_mn(x, y) = u_m(x) u_n(y)
+```
 
-The observed ratio is approximately $4.26\times10^2$ for that machine and workload. It replaces an earlier fixed-ratio claim that used a different benchmark protocol and was not a stable project invariant.
+The optimized implementation evaluates the coefficient matrix with matrix
+products. The benchmark compares it with a direct implementation that builds
+each two-dimensional mode explicitly. Both paths use the same public basis
+function and are checked for numerical agreement before their timings are
+compared.
 
-## Other current benchmark values
+## Solver refinement
 
-The same run reported:
+Run the discretization checks with:
 
-| Operation | Best time |
-| :--- | ---: |
-| Fresnel propagation | 0.0076406 s |
-| Angular-spectrum propagation | 0.0148482 s |
-| MTF from a PSF | 0.0067240 s |
-| Field construction | 0.0011754 s |
+```bash
+python -m optcon.benchmarks.convergence
+```
 
-These values are included to make the run auditable, not as release thresholds. Regenerate them on the target machine before comparing platforms.
+Results are written to:
 
-## Contract-boundary overhead
+```text
+optcon-artifacts/benchmarks/solver_convergence.csv
+```
 
-The phase-kernel micro-benchmark compares a raw NumPy function with the same function behind `@checked`. It uses one warm-up and seven timed calls, summarized by the median. At $N=10$, the raw and checked paths took 4.30 us and 26.70 us; at $N=10^6$, the recorded times were 32.682 ms and 31.689 ms, respectively. Across the sampled lengths the checked-to-raw ratio ranged from 0.970 to 6.209. At small arrays the fixed signature and conversion cost is visible; at large arrays the order reversal shows that timing variability and the vectorized kernel dominate the difference. The result is not interpreted as a claim of zero or negative overhead.
+The finer solution is a numerical reference, not an analytic result. Treat the
+reported errors and estimated orders as evidence for the tested configuration,
+not as universal solver guarantees.
 
-## Sampling regimes
+## Reading the results
 
-Propagation methods have different validity domains. The repository's `max_propagation` helper reports the limit for the internal transfer-function methods. External engines must be tested with their own grid and unit conventions. In the current LightPipes Gaussian experiment, `Forvard` and `Fresnel` were compared against the closed form over a 20-mm window; the convolution path remained 6.67--7.07% wide over the tested 256--4096 sample range. This is a characterization of that configuration, not a universal error bound.
+- Compare runs made with the same Python, NumPy, SciPy, thread settings, and
+  hardware.
+- Regenerate results after changing a numerical kernel.
+- Do not treat a single timing ratio as a package-level performance promise.
+- Optional external engines have their own sampling and unit conventions.
 
-Solver discretization checks are stored in `docs/data/solver_convergence.csv`. They compare candidate grids or step counts with finer numerical references from the same implementation. The Fox-Li sequence reaches a machine-precision plateau above 32 points; the resolved G-NLSE sequences show approximately second-order refinement. These references are not analytic solutions and should not be interpreted as universal error estimates.
-
-## Deliberate scope limits
-
-- There is no GPU, Torch, or JAX backend in the current release.
-- No reduced-precision path is advertised.
-- Transfer functions are not globally cached; the cacheable frequency axes are small and depend on the field grid.
-- Benchmark figures and CSVs are generated by `docs/generate_figures.py` and should be regenerated after changing numerical kernels.
+There is no GPU, Torch, JAX, or reduced-precision backend in this release.

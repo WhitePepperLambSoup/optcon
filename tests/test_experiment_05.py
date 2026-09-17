@@ -5,7 +5,7 @@ import math
 from optcon.examples.experiment_05_cavity_thermal_tolerance import run_experiment
 
 
-def test_experiment_05_returns_manuscript_tolerance_metrics():
+def test_experiment_05_returns_tolerance_metrics():
     result = run_experiment()
 
     expected = {
@@ -30,8 +30,7 @@ def test_experiment_05_reports_a_conservative_90_percent_thermal_budget():
     negative = abs(result["thermal_90pct_negative_limit_d_m"])
     positive = result["thermal_90pct_positive_limit_d_m"]
 
-    # The published |D_th| < 8 m^-1 statement is a conservative summary of
-    # the asymmetric sampled curve, not a hard-coded value in the experiment.
+    # Use the narrower side of the asymmetric interval as the conservative budget.
     assert min(negative, positive) == result["thermal_90pct_budget_abs_d_m"]
     assert 0.0 < result["thermal_90pct_budget_abs_d_m"] < 10.0
     assert math.isfinite(result["thermal_90pct_budget_abs_d_m"])

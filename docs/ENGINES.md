@@ -25,11 +25,11 @@ The command reports:
 | Mie scattering | `PyMieScatt` library default | Maximum relative discrepancy `1.50e-3` over five diameters; this is a medium-convention characterization | Current characterization |
 | Gaussian beam | LightPipes `Forvard` and `Fresnel` | `Forvard` is within about `6.52e-9` at `z=zR`; `Fresnel` is 6.67--7.07% wide over the tested resolution sweep | Current measurement |
 | Thin film | `tmm_core`, `tmm_fast` | Conventions are registered; no current figure claim is made when `tmm_fast` is unavailable | Availability-dependent |
-| Ray tracing | `optiland`, `rayoptics`, `pyoptools`, `tracepy`, `optcon_paraxial` | Conventions and import status are recorded; no shared observable is claimed unless an adapter runs | Survey / conditional |
-| Diffraction | `poppy`, `prysm`, `diffractio`, `torchoptics`, `optcon_diffraction` | Registry records units and adapter availability; no blanket agreement claim | Survey / conditional |
-| EM and photonic solvers | `ceviche`, `femwell`, `A_FMM`, `neuroptica`, `deeplens` | Registry records conventions and dependency status; numerical claims require a shared observable | Survey / conditional |
+| Ray tracing | `optiland`, `rayoptics`, `pyoptools`, `tracepy`, `optcon_paraxial` | Conventions and import status are recorded; numerical comparison requires a runnable adapter | Registry only |
+| Diffraction | `poppy`, `prysm`, `diffractio`, `torchoptics`, `optcon_diffraction` | Units and adapter availability are recorded; numerical comparison requires a shared observable | Registry only |
+| EM and photonic solvers | `ceviche`, `femwell`, `A_FMM`, `neuroptica`, `deeplens` | Conventions and dependency status are recorded; numerical comparison requires a shared observable | Registry only |
 
-The figure script writes availability-sensitive provenance to `docs/data/fig2_mie_provenance.csv` and `docs/data/fig4_provenance.csv`. Missing engines are represented as unavailable data, not as zeros or fabricated curves.
+Missing engines are reported as unavailable, not as zero-valued measurements.
 
 ## Units and convention traps
 

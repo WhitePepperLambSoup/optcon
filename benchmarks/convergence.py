@@ -1,4 +1,4 @@
-"""Deterministic discretization-convergence measurements for the paper.
+"""Deterministic discretization-convergence measurements.
 
 The benchmark deliberately uses a finer numerical result as a reference rather
 than an analytic expression whose geometry, boundary convention, or nonlinear
@@ -27,7 +27,10 @@ from optcon.nlse import FiberParameters, gaussian_pulse, solve_nlse
 DEFAULT_FOX_POINTS = (16, 32, 64, 128, 256)
 DEFAULT_GNLSE_STEPS = (25, 50, 100, 200)
 DEFAULT_OUTPUT_PATH = (
-    Path(__file__).resolve().parents[1] / "docs" / "data" / "solver_convergence.csv"
+    Path(__file__).resolve().parents[1]
+    / "optcon-artifacts"
+    / "benchmarks"
+    / "solver_convergence.csv"
 )
 
 CSV_FIELDS = [
