@@ -1,7 +1,6 @@
 # Release guide
 
-This repository publishes the software package only. Manuscripts, submission
-files, and private review material are not part of a software release.
+This guide covers source and package releases for `optcon`.
 
 ## Prepare
 
@@ -31,8 +30,8 @@ tar -tf dist/*.tar.gz
 ```
 
 The archives should contain source code, tests required by the source archive,
-license files, and package metadata. They must not contain local benchmark
-artifacts or private manuscript files.
+license files, and package metadata. They should not contain local benchmark
+or build artifacts.
 
 ## Tag and publish
 

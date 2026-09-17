@@ -25,7 +25,7 @@ Thumbs.db
 *.fls
 *.fdb_latexmk
 
-# Temporary review renders and intermediate builds
+# Local build artifacts
 review_pdf/
 tmp/
 tmp_pytest/
@@ -35,7 +35,7 @@ docs/*_build.*
 docs/*_release.*
 docs/*_v2.*
 
-# Private manuscript and submission material. Keep these outside public Git history.
+# Local research files
 /private-paper/
 /paper.md
 /paper.bib

@@ -345,7 +345,7 @@ def run_experiment(output_dir: str | Path | None = None) -> dict[str, float]:
 
     fig.tight_layout()
     fig.savefig(fig_path, bbox_inches="tight")
-    print(f"\n[OK] Publication-grade figure saved to: {fig_path}")
+    print(f"\n[OK] Figure saved to: {fig_path}")
 
     return {
         "max_tilt_discrepancy": max_tilt_discrepancy,
