@@ -34,3 +34,17 @@ docs/paper_cpc_reviewed.pdf
 docs/*_build.*
 docs/*_release.*
 docs/*_v2.*
+
+# Private manuscript and submission material. Keep these outside public Git history.
+/private-paper/
+/paper.md
+/paper.bib
+/docs/paper*.tex
+/docs/paper*.bib
+/docs/paper*.pdf
+/docs/CPC_METHODOLOGY.md
+/docs/LITERATURE_POSITIONING.md
+/docs/generate_figures.py
+/docs/data/
+/docs/figures/
+/docs/superpowers/plans/
