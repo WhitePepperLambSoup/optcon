@@ -1,17 +1,12 @@
-"""Experiment 03 - the 0.2% Mie mystery, and how it was solved.
+"""Experiment 03 - Mie adjudication with an optional medium-default check.
 
-Experiment 02 found that miepython and PyMieScatt differ by about 0.2% and
-that nothing in either library says so.  This experiment:
-
-1. rules out the obvious excuse (series truncation) by showing that the
-   independent reference is converged - three different term counts, same ten
-   significant digits;
-2. adjudicates with that reference;
-3. reports the actual cause, which turned out to be a library *default*:
-   ``PyMieScatt.MieQ`` ships ``nMedium=1.00027316``, so the same call answers
-   a question about a sphere in air rather than in vacuum;
-4. shows the three implementations agreeing to machine precision once the
-   medium is stated explicitly - which is what the optcon adapter now does.
+The experiment always evaluates the independent reference series. It compares
+that reference with each Mie library that is importable in the current
+environment. When PyMieScatt is available, it also demonstrates that omitting
+``nMedium`` asks a different physical question from an explicit vacuum-medium
+call. The script prints measured discrepancies; it does not assume that every
+optional engine is installed or that all implementations agree at machine
+precision.
 
 Run:  python -m optcon.examples.experiment_03_mie_adjudication
 """
@@ -144,8 +139,8 @@ def convergence_check() -> None:
 
     print(
         "\nAll three term counts give the same ten significant digits, so the\n"
-        "reference is fully converged where the libraries disagree. The\n"
-        "0.2% gap is therefore not series truncation."
+        "reference is converged at the displayed precision. Any remaining\n"
+        "inter-engine deviation is therefore not attributable to this term-count choice."
     )
 
 
@@ -160,16 +155,11 @@ def main() -> int:
             verdict = "agrees with the reference" if error <= 1e-6 else "DISAGREES"
             print(f"{name:12s} max deviation {error:.3e}   {verdict}")
         print(
-            "\nThe 0.2% gap is gone: all three implementations now agree to better\n"
-            "than 3e-7 across the whole range, and miepython to 2e-10. The remnant\n"
-            "is largest at the biggest size parameter, which is where PyMieScatt's\n"
-            "own recurrence has the most roundoff - not a physics disagreement.\n"
-            "\nIt is gone because the adapter states the medium explicitly for every\n"
-            "engine instead of inheriting whichever default a library ships.\n\n"
-            "The lesson is not that PyMieScatt is wrong - its default is a\n"
-            "reasonable one for atmospheric work. The lesson is that a default\n"
-            "buried in a signature changed the answer by 0.15%, and only a\n"
-            "differential test could see it."
+            "\nThe adapter states the surrounding medium explicitly for every engine.\n"
+            "The values above are the evidence for this run; unavailable optional\n"
+            "libraries are not counted as agreement. A library default may be valid\n"
+            "for its intended application while still changing the physical query,\n"
+            "which is why the medium belongs in the adapter contract."
         )
     return 0
 

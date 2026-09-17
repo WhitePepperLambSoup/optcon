@@ -26,6 +26,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from fractions import Fraction
+from numbers import Integral
 from typing import Any
 
 import numpy as np
@@ -57,6 +58,14 @@ class Quantity:
     value: Any
     unit: Unit
     amp_order: int | None = None
+
+    def __post_init__(self) -> None:
+        if self.amp_order is None:
+            return
+        if isinstance(self.amp_order, bool) or not isinstance(self.amp_order, Integral):
+            raise AmplitudeOrderError("amp_order must be an integer or None")
+        if self.amp_order < 0:
+            raise AmplitudeOrderError("amp_order must be non-negative")
 
     # -- construction / conversion --------------------------------------
     def to(self, target: str | Unit) -> "Quantity":
@@ -289,14 +298,20 @@ class Quantity:
             if not (isinstance(left, Quantity) and isinstance(right, Quantity)):
                 raise UnitError(f"{name!r} requires two quantities")
             _require_same_dimension(left, right, name)
+            order = _merge_orders(left.amp_order, right.amp_order, name, left, right)
             rhs = (
                 right.value
                 if right.unit == left.unit
                 else right.unit.to_value(right.value, left.unit)
             )
-            return Quantity(ufunc(left.value, rhs, **kwargs), left.unit, left.amp_order)
+            if name == "arctan2":
+                return Quantity(ufunc(left.value, rhs, **kwargs), _RADIAN, RATIO)
+            return Quantity(ufunc(left.value, rhs, **kwargs), left.unit, order)
         if name in _PREDICATES:
-            return ufunc(self.unit.to_value(self.value, _DIMENSIONLESS), **kwargs)
+            result = ufunc(self.value, **kwargs)
+            if name == "sign":
+                return Quantity(result, _DIMENSIONLESS, RATIO)
+            return result
         raise UnitError(
             f"numpy ufunc {name!r} has no defined meaning for dimensional quantities; "
             "drop the unit explicitly with .to_value() / .magnitude if you really mean it"

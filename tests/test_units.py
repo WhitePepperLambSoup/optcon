@@ -8,6 +8,7 @@ engineering safety this library keeps *angle* as its own base dimension, so
 import pytest
 
 from optcon import DimensionError, UnitError, unit
+from optcon.units import Dimension, Unit
 
 
 def test_millimetre_is_a_thousandth_of_a_metre():
@@ -47,6 +48,21 @@ def test_prefixed_derived_units():
 def test_watt_is_derived_from_joule_per_second():
     assert unit("W").dimension == (unit("J") / unit("s")).dimension
     assert unit("mW").factor == pytest.approx(1e-3)
+
+
+def test_farad_has_the_correct_si_scale_and_dimension():
+    farad = unit("F")
+    expected_dimension = Dimension.from_mapping(
+        {"mass": -1, "length": -2, "time": 4, "current": 2}
+    )
+    assert farad.factor == pytest.approx(1.0)
+    assert farad.dimension == expected_dimension
+
+
+@pytest.mark.parametrize("factor", [0.0, -1.0, float("nan"), float("inf")])
+def test_unit_rejects_nonpositive_or_nonfinite_scale(factor):
+    with pytest.raises(UnitError, match="finite and strictly positive"):
+        Unit(factor)
 
 
 def test_percent_is_dimensionless_with_scale():

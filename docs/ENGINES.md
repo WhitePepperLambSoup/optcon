@@ -1,81 +1,53 @@
 # The engine registry
 
-Every external solver optcon knows about is described by one entry in
-`optcon.engines.registry.ENGINE_SPECS`. The entry records what the engine
-covers, where its source lives, and **the units it actually expects**, so an
-adapter can convert at the boundary instead of relying on the caller to
-remember. Additions are cheap by design: one spec entry, plus one differential
-test where a shared observable exists.
+Every external solver known to `optcon` is described by one entry in `optcon.engines.registry.ENGINE_SPECS`. Each entry records the domain, import path, source location, length unit, angle unit, and a short convention note. The adapter layer converts at the boundary instead of relying on callers to remember a library-specific convention.
 
-Engines that cannot import in a given environment report why rather than
-failing obscurely, and tests that need them skip cleanly. The status is explicit:
-`ready` means the import succeeded, `missing` means the optional package/source
-is absent, and `error` means the engine was found but failed during import. Run
-`python -m optcon.benchmarks.engine_status` for the full survey, or add
-`--strict` to gate only Tier-1 engines used by differential adapters. Point the
-registry at a different corpus with `OPTCON_CORPUS_ROOT`.
+Run:
 
-## Availability and conventions
+```bash
+python -m optcon.benchmarks.engine_status
+```
 
-| Engine | Domain | Length | Angle | Adapter | Validated against |
-| --- | --- | --- | --- | --- | --- |
-| `tmm_core` | thin film | nm | rad | `stack_response` | `tmm_fast` to 4e-08 |
-| `tmm_fast` | thin film | **m** | rad | `stack_response` | `tmm_core` to 4e-08 |
-| `miepython` | Mie | nm | rad | `mie_efficiencies` | textbook series to 1.8e-10 |
-| `PyMieScatt` | Mie | nm | rad | `mie_efficiencies` | textbook series to 1.5e-03 (its `nMedium` default; see below) |
-| `optcon_reference` | Mie | nm | rad | `mie_efficiencies` | written from Bohren & Huffman |
-| `lightpipes_forvard` | beam | mm | rad | `gaussian_beam_radius` | closed form to 2.1e-06 |
-| `lightpipes_fresnel` | beam | mm | rad | `gaussian_beam_radius` | closed form: **2-7% wide** |
-| `optcon_beam_reference` | beam | mm | rad | `gaussian_beam_radius` | `w = w0 sqrt(1 + (z/zR)^2)` |
-| `optiland` | ray tracing | mm | rad | `thick_lens_focal_length` | optcon's ABCD to 1e-09 |
-| `optcon_paraxial` | ray tracing | mm | rad | `thick_lens_focal_length` | thick-lens lensmaker equation |
-| `rayoptics` | ray tracing | mm | rad | - | registered; `src/` layout |
-| `neuroptica` | photonic circuit | um | rad | - | `is_unitary` agrees with `checks.is_unitary` |
-| `ceviche` | EM solver | m | rad | - | its adjoint passes `check_gradient` |
-| `femwell` | EM solver | um | rad | - | registered; its `mode_solver_1d` does not import in reasonable time here |
-| `A_FMM` | EM solver | um | rad | - | registered; **unit unverified** |
-| `poppy` | diffraction | m | rad | `airy_psf_radius` | closed form to 2% (it resamples the detector, so the pixel scale must be read from the FITS header, not from the request) |
-| `optcon_diffraction` | diffraction | m | rad | `airy_psf_radius` | `theta = 1.22 lambda / D` |
-| `prysm` | diffraction | mm | rad | - | registered; its `free_space` could not be matched to a Fresnel propagation from the docs, so no adapter ships |
-| `diffractio` | beam | **um** | rad | `gaussian_beam_radius` | closed form to 5e-04 on a grid it can integrate on; **refuses** grids coarser than ~1.5 wavelengths per sample |
-| `tracepy` | ray tracing | um | rad | - | its `RayGroup` docstring states microns |
-| `pyoptools` | ray tracing | mm | rad | - | registered; **unit unverified** |
-| `deeplens` | lens design | mm | rad | - | registered; PyTorch; **unit unverified** |
-| `torchoptics` | diffraction | m | rad | - | shallow clone lacks `_version` |
+The command reports:
 
-A dash in the adapter column means the engine is registered and importable but
-has no callable adapter yet: either no shared observable has been agreed (grid
-alignment for diffraction, surface conventions for ray tracing) or the work
-has not been done. The conventions are recorded anyway, because that is the
-part that is expensive to rediscover.
+- `ready`: the import path and required source are available;
+- `missing`: an optional dependency or source tree is absent;
+- `error`: the import was attempted but failed for another reason.
 
-## Why the conventions are recorded
+`--strict` gates only engines with declared Tier-1 differential adapters. A registry entry is not, by itself, a completed cross-engine benchmark.
 
-Three of these engines compute the same physics in three different unit
-systems, and none of them says so in a signature a caller would read:
+## Current evidence
 
-| Engine | Internally consistent unit | Trap |
-| --- | --- | --- |
-| `tmm_core` | nanometre | none, if you stay in nm |
-| `tmm_fast` | **metre (SI)** | the same stack written in nm is off by 10^9 |
-| `diffractio` | **micron** | it ships `um = 1.0`, so `nm = 0.001` |
-| `LightPipes` | whatever you pass | size, wavelength **and** distance must share it |
-| `Meep` (surveyed) | dimensionless | `a`-units, constants set to one |
-| `Tidy3D` (surveyed) | micron | a `UNIT_SCALING` dictionary |
+| Domain | Engines or reference | Current evidence | Status |
+| :--- | :--- | :--- | :--- |
+| Mie scattering | `miepython` and `optcon_reference` | Maximum relative discrepancy `1.77e-10` over five diameters | Current measurement |
+| Mie scattering | `PyMieScatt` with explicit `nMedium=1.0` and `optcon_reference` | Maximum relative discrepancy `3.06e-7` over five diameters | Current measurement |
+| Mie scattering | `PyMieScatt` library default | Maximum relative discrepancy `1.50e-3` over five diameters; this is a medium-convention characterization | Current characterization |
+| Gaussian beam | LightPipes `Forvard` and `Fresnel` | `Forvard` is within about `6.52e-9` at `z=zR`; `Fresnel` is 6.67--7.07% wide over the tested resolution sweep | Current measurement |
+| Thin film | `tmm_core`, `tmm_fast` | Conventions are registered; no current figure claim is made when `tmm_fast` is unavailable | Availability-dependent |
+| Ray tracing | `optiland`, `rayoptics`, `pyoptools`, `tracepy`, `optcon_paraxial` | Conventions and import status are recorded; no shared observable is claimed unless an adapter runs | Survey / conditional |
+| Diffraction | `poppy`, `prysm`, `diffractio`, `torchoptics`, `optcon_diffraction` | Registry records units and adapter availability; no blanket agreement claim | Survey / conditional |
+| EM and photonic solvers | `ceviche`, `femwell`, `A_FMM`, `neuroptica`, `deeplens` | Registry records conventions and dependency status; numerical claims require a shared observable | Survey / conditional |
 
-`PyMieScatt` adds a fourth kind of trap: a *physical* default rather than a
-unit one. `MieQ` ships `nMedium=1.00027316`, so a call without that argument
-answers a question about a sphere in air. The adapter states the medium
-explicitly for every engine, which is what closed a 0.2% disagreement that
-neither library reported.
+The figure script writes availability-sensitive provenance to `docs/data/fig2_mie_provenance.csv` and `docs/data/fig4_provenance.csv`. Missing engines are represented as unavailable data, not as zeros or fabricated curves.
+
+## Units and convention traps
+
+| Engine | Boundary convention | Main risk |
+| :--- | :--- | :--- |
+| `tmm_core` | nanometres and radians | Mixing nm with SI metres in a stack definition |
+| `tmm_fast` | SI metres and radians | Passing the same numerical values used for `tmm_core` without conversion |
+| `diffractio` | micrometres internally | Its unit constants use `um=1.0` and `nm=0.001` |
+| LightPipes | caller-selected consistent length unit | Grid size, wavelength, and distance must use the same unit |
+| `PyMieScatt` | vacuum wavelength converted to the stated medium by the adapter | Its library default answers a different medium query if not overridden |
+| `optiland` | millimetre lens data with micrometre wavelengths in some workflows | The project convention must be checked per observable |
+
+The adapter policy is to state the physical medium, convert units explicitly, and use keyword-only physical inputs wherever argument order differs between engines.
 
 ## Adding an engine
 
-1. Add an `EngineSpec`: domain, module, project path, length unit, angle unit,
-   and a one-line summary of the trap it sets.
-2. Verify the convention **from the project's own examples**, not from
-   documentation prose.
-3. If a shared observable exists, write the adapter with keyword-only
-   arguments and a differential test against the closed form or another
-   engine.
-4. Let the test skip when the engine is unavailable.
+1. Add an `EngineSpec` with its domain, module, source path, length unit, angle unit, and convention note.
+2. Verify the convention from the engine's own examples or source code.
+3. Define a shared observable and a physical query before adding a numerical claim.
+4. Add a differential test against a closed form, an independent implementation, or another engine.
+5. Let the test skip cleanly when the optional dependency is absent, while preserving an explicit registry status.

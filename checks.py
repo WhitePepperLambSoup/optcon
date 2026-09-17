@@ -39,6 +39,8 @@ def _as_matrix(value: Any, name: str = "matrix") -> np.ndarray:
     matrix = np.asarray(value)
     if matrix.ndim != 2:
         raise ValueError(f"{name}: expected a 2-D operator, got shape {matrix.shape}")
+    if matrix.size == 0:
+        raise ValueError(f"{name}: expected a non-empty operator, got shape {matrix.shape}")
     return matrix.astype(complex, copy=False)
 
 
@@ -90,7 +92,14 @@ def is_unitary(matrix: Any, rtol: float = DEFAULT_RTOL, atol: float = DEFAULT_AT
 
 
 def is_passive(matrix: Any, rtol: float = DEFAULT_RTOL, atol: float = DEFAULT_ATOL) -> bool:
-    return bool(gain_above_unity(matrix) <= rtol + atol)
+    try:
+        operator = _as_matrix(matrix)
+        if not np.isfinite(operator).all():
+            return False
+        largest = float(np.max(np.linalg.svd(operator, compute_uv=False)))
+    except (ValueError, np.linalg.LinAlgError):
+        return False
+    return bool(max(0.0, largest - 1.0) <= rtol + atol)
 
 
 def is_reciprocal(matrix: Any, rtol: float = DEFAULT_RTOL, atol: float = DEFAULT_ATOL) -> bool:
@@ -122,11 +131,22 @@ def assert_passive(
     name: str = "operator",
 ) -> None:
     """Declare an operator gain-free; raise if it amplifies."""
+    operator = _as_matrix(matrix, name)
+    if not np.isfinite(operator).all():
+        raise ContractViolation(
+            f"{name}: declared passive but contains non-finite matrix entries"
+        )
     if is_passive(matrix, rtol=rtol, atol=atol):
         return
+    try:
+        excess = gain_above_unity(operator)
+    except np.linalg.LinAlgError as error:
+        raise ContractViolation(
+            f"{name}: declared passive but its singular values could not be computed"
+        ) from error
     raise ContractViolation(
         f"{name}: declared passive but the largest singular value exceeds unity "
-        f"by {gain_above_unity(matrix):.3e}"
+        f"by {excess:.3e}"
     )
 
 
@@ -151,36 +171,49 @@ def assert_reciprocal(
 
 
 def _as_vector(value: Any, name: str) -> np.ndarray:
-    array = np.asarray(value, dtype=float)
+    array = np.asarray(value)
     if array.ndim != 1:
         raise ValueError(f"{name}: expected a 1-D vector, got shape {array.shape}")
     return array
+
+
+def _validate_eps(eps: float) -> float:
+    try:
+        step = float(eps)
+    except (TypeError, ValueError) as error:
+        raise ValueError("eps must be finite and strictly positive") from error
+    if not np.isfinite(step) or step <= 0.0:
+        raise ValueError("eps must be finite and strictly positive")
+    return step
 
 
 def finite_difference_gradient(
     function, x: Any, eps: float = DEFAULT_EPS
 ) -> np.ndarray:
     """Central-difference gradient of a scalar function."""
-    point = _as_vector(x, "x")
-    gradient = np.zeros_like(point)
+    point = np.asarray(_as_vector(x, "x"), dtype=np.result_type(np.asarray(x).dtype, float))
+    step_size = _validate_eps(eps)
+    gradient = np.zeros(point.shape, dtype=np.result_type(point.dtype, float))
     for index in range(point.size):
-        step = np.zeros_like(point)
-        step[index] = eps
-        gradient[index] = (function(point + step) - function(point - step)) / (2.0 * eps)
+        step = np.zeros_like(point, dtype=point.dtype)
+        step[index] = step_size
+        gradient[index] = (
+            function(point + step) - function(point - step)
+        ) / (2.0 * step_size)
     return gradient
 
 
 def finite_difference_jacobian(function, x: Any, eps: float = DEFAULT_EPS) -> np.ndarray:
     """Central-difference Jacobian of a vector-valued function."""
-    point = _as_vector(x, "x")
+    point = np.asarray(_as_vector(x, "x"), dtype=np.result_type(np.asarray(x).dtype, float))
+    step_size = _validate_eps(eps)
     columns = []
     for index in range(point.size):
-        step = np.zeros_like(point)
-        step[index] = eps
+        step = np.zeros_like(point, dtype=point.dtype)
+        step[index] = step_size
         columns.append(
-            (np.asarray(function(point + step), dtype=float)
-             - np.asarray(function(point - step), dtype=float))
-            / (2.0 * eps)
+            (np.asarray(function(point + step)) - np.asarray(function(point - step)))
+            / (2.0 * step_size)
         )
     return np.column_stack(columns)
 
@@ -245,21 +278,37 @@ def dot_test(
     eps: float = DEFAULT_EPS,
     rtol: float = DEFAULT_DOT_RTOL,
 ) -> dict:
-    """The classic <Jv, w> == <v, J^T w> adjoint check.
+    """The classic complex inner-product adjoint check.
 
-    ``Jv`` comes from central differences of ``forward``; ``J^T w`` comes from
+    ``Jv`` comes from central differences of ``forward``; ``J^H w`` comes from
     the supplied ``adjoint``.  The two inner products must agree for random
     probes ``v`` and ``w``.
     """
     point = _as_vector(x, "x")
+    step_size = _validate_eps(eps)
     output = _as_vector(forward(point), "forward(x)")
     generator = np.random.default_rng(seed)
-    probe_in = generator.standard_normal(point.size)
-    probe_out = generator.standard_normal(output.size)
-    forward_probe = (
-        _as_vector(forward(point + eps * probe_in), "forward(x + eps v)")
-        - _as_vector(forward(point - eps * probe_in), "forward(x - eps v)")
-    ) / (2.0 * eps)
+    def random_probe(size: int, template: np.ndarray) -> np.ndarray:
+        real = generator.standard_normal(size)
+        if np.iscomplexobj(template):
+            return real + 1.0j * generator.standard_normal(size)
+        return real
+
+    probe_in = random_probe(point.size, point)
+    probe_out = random_probe(output.size, output)
+    output_plus = _as_vector(
+        forward(point + step_size * probe_in), "forward(x + eps v)"
+    )
+    output_minus = _as_vector(
+        forward(point - step_size * probe_in), "forward(x - eps v)"
+    )
+    if output_plus.shape != output.shape or output_minus.shape != output.shape:
+        raise AdjointCheckFailure(
+            "forward output shape changed under the finite-difference perturbation: "
+            f"forward(x)={output.shape}, forward(x + eps v)={output_plus.shape}, "
+            f"forward(x - eps v)={output_minus.shape}"
+        )
+    forward_probe = (output_plus - output_minus) / (2.0 * step_size)
     adjoint_probe = adjoint(probe_out)
     try:
         adjoint_probe = _as_vector(adjoint_probe, "adjoint(w)")
@@ -269,8 +318,8 @@ def dot_test(
         raise AdjointCheckFailure(
             f"adjoint(w) has shape {adjoint_probe.shape} but must have shape {point.shape}"
         )
-    left = float(np.dot(forward_probe, probe_out))
-    right = float(np.dot(probe_in, adjoint_probe))
+    left = np.vdot(forward_probe, probe_out)
+    right = np.vdot(probe_in, adjoint_probe)
     scale = max(abs(left), abs(right), 1e-300)
     return {
         "ok": bool(abs(left - right) / scale <= rtol),
@@ -297,5 +346,5 @@ def assert_adjoint(
     raise AdjointCheckFailure(
         f"{name}: adjoint test failed with relative error {report['rel_error']:.3e} "
         f"exceeding rtol {rtol:g} (<Jv, w> = {report['left']:.6g}, "
-        f"<v, J^T w> = {report['right']:.6g})"
+        f"<v, J^H w> = {report['right']:.6g})"
     )

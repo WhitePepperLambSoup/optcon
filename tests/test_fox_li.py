@@ -1,5 +1,7 @@
 """Tests for the Fox-Li cavity diffraction integral operator."""
 
+from typing import Any, cast
+
 import numpy as np
 import pytest
 
@@ -51,6 +53,58 @@ def test_fox_li_dimension_validation():
             wavelength=q(1064.0, "nm"),
             length=q(0.5, "rad"),  # Invalid: length must be a length
             aperture=q(1.0, "mm"),
+        )
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"wavelength": q(float("nan"), "nm")},
+        {"length": q(float("inf"), "m")},
+        {"aperture": q(float("nan"), "mm")},
+        {"g1": float("nan")},
+        {"g2": float("inf")},
+        {"tilt": q(float("nan"), "rad")},
+    ],
+)
+def test_fox_li_resonator_rejects_nonfinite_parameters(kwargs):
+    parameters: dict[str, Any] = {
+        "wavelength": q(1064.0, "nm"),
+        "length": q(500.0, "mm"),
+        "aperture": q(1.0, "mm"),
+    }
+    parameters.update(kwargs)
+
+    with pytest.raises(ValueError, match="finite"):
+        FoxLiResonator(**parameters)
+
+
+@pytest.mark.parametrize("num_points", [16.5, True])
+def test_fox_li_operator_requires_an_integer_grid_size(num_points):
+    res = FoxLiResonator(q(1064.0, "nm"), q(500.0, "mm"), q(1.0, "mm"))
+    with pytest.raises(ValueError, match="num_points must be an integer"):
+        fox_li_operator(res, num_points=num_points)
+
+
+def test_fox_li_operator_rejects_fractional_azimuthal_order():
+    res = FoxLiResonator(
+        q(1064.0, "nm"), q(500.0, "mm"), q(1.0, "mm"), geometry="circular"
+    )
+    with pytest.raises(ValueError, match="azimuthal_order must be a non-negative integer"):
+        fox_li_operator(res, num_points=16, azimuthal_order=cast(Any, 1.5))
+
+
+def test_solve_fox_li_modes_requires_at_least_one_mode():
+    res = FoxLiResonator(q(1064.0, "nm"), q(500.0, "mm"), q(1.0, "mm"))
+    with pytest.raises(ValueError, match="num_modes must be at least 1"):
+        solve_fox_li_modes(res, num_modes=0, num_points=16)
+
+
+def test_fox_li_power_iteration_rejects_nonfinite_initial_field():
+    res = FoxLiResonator(q(1064.0, "nm"), q(500.0, "mm"), q(1.0, "mm"))
+    with pytest.raises(ValueError, match="initial_field must contain only finite values"):
+        fox_li_power_iteration(
+            res, initial_field=np.full(16, np.nan), max_iter=1, num_points=16
         )
 
 
@@ -132,6 +186,54 @@ def test_fox_li_power_iteration_matches_eigensolver():
         np.sum(weights * np.conj(dominant_mode.amplitude) * eigenmodes[0].amplitude)
     )
     assert int_overlap == pytest.approx(1.0, rel=1e-2)
+
+
+@pytest.mark.parametrize("max_iter", [0, -1])
+def test_fox_li_power_iteration_rejects_nonpositive_iteration_limit(max_iter):
+    res = FoxLiResonator(
+        wavelength=q(1064.0, "nm"),
+        length=q(500.0, "mm"),
+        aperture=q(1.0, "mm"),
+    )
+    with pytest.raises(ValueError, match="max_iter must be at least 1"):
+        fox_li_power_iteration(res, max_iter=max_iter, num_points=16)
+
+
+@pytest.mark.parametrize("tol", [0.0, -1.0, float("nan"), float("inf")])
+def test_fox_li_power_iteration_rejects_invalid_tolerance(tol):
+    res = FoxLiResonator(
+        wavelength=q(1064.0, "nm"),
+        length=q(500.0, "mm"),
+        aperture=q(1.0, "mm"),
+    )
+    with pytest.raises(ValueError, match="tol must be finite and strictly positive"):
+        fox_li_power_iteration(res, tol=tol, num_points=16)
+
+
+def test_fox_li_power_iteration_returns_the_new_state_on_convergence(monkeypatch):
+    import optcon.fox_li as fox_li_module
+
+    num_points = 16
+    diagonal = np.linspace(0.2, 0.9, num_points)
+
+    def fake_operator(resonator, num_points, azimuthal_order):
+        return np.diag(diagonal), np.arange(num_points, dtype=float), np.ones(num_points)
+
+    monkeypatch.setattr(fox_li_module, "fox_li_operator", fake_operator)
+    res = FoxLiResonator(
+        wavelength=q(1064.0, "nm"),
+        length=q(500.0, "mm"),
+        aperture=q(1.0, "mm"),
+    )
+
+    mode, history = fox_li_power_iteration(
+        res, max_iter=1, tol=1e-7, num_points=num_points
+    )
+
+    expected = diagonal / np.linalg.norm(diagonal)
+    assert len(history["error"]) == 1
+    assert np.allclose(mode.amplitude.real, expected, rtol=1e-6, atol=1e-6)
+    assert np.allclose(mode.amplitude.imag, 0.0, atol=1e-12)
 
 
 def test_fox_li_confocal_low_diffraction_loss():

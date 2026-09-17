@@ -77,12 +77,14 @@ Physics invariants become checkable claims rather than comments:
 * `assert_unitary` - lossless
 * `assert_passive` - no net gain
 * `assert_reciprocal` - symmetric in the amplitude basis
-* `check_gradient`, `assert_adjoint` - a derivative that is actually the
-  derivative, verified against central differences and the
-  `<Jv, w> == <v, J^T w>` dot-product test
+* `check_gradient`, `assert_adjoint` - a supplied derivative or backward
+  operator checked against central differences and the
+  `<Jv, w> == <v, J^H w>` dot-product identity. This verifies the tested
+  discrete operator and probes; it is not a proof of a complete autodiff
+  system.
 
 This is the scikit-rf treatment of passivity, extended to optics and combined
-with automatic-differentiation verification.
+with discrete derivative and adjoint verification.
 
 ### `specs`
 
@@ -97,9 +99,10 @@ parameters dataclass can be brought under check without being rewritten.
 
 `elements`, `gaussian`, `fresnel`, `polarization`, `cavity`, `fiber`,
 `grating`, `thinfilm`, `diffraction`, `beam_quality`, `noise`, `laser` and
-`interferometry` cover the analysis an optical engineer does before reaching
-for a solver. Every function takes and returns typed quantities, and every one
-is tested against an independent closed form.
+`interferometry` cover common analyses performed before reaching for a solver.
+Public calculation boundaries use typed quantities where dimensional checking
+is relevant, and representative formulas are tested against closed forms or
+independent computational routes.
 
 ### `engines`
 
@@ -110,12 +113,10 @@ adapter can convert at the boundary instead of relying on the caller to
 remember. Engines that cannot be imported in a given environment report why
 rather than failing obscurely.
 
-Fifteen engines are registered once their dependencies are present, spanning
-thin films, Mie scattering, beam propagation, ray tracing, diffraction, FEM
-and FDTD solvers, photonic circuits and differentiable lens design. The
-registry is what makes the second wave cheap: adding optiland, poppy, prysm,
-neuroptica or ceviche is one spec entry plus, where a shared observable
-exists, one differential test.
+The registry spans thin films, Mie scattering, beam propagation, ray tracing,
+diffraction, FEM and FDTD solvers, photonic circuits, and differentiable lens
+design. Adding another surveyed engine requires a specification entry and,
+when a shared observable and importable adapter exist, a differential test.
 
 ## Methodology: differential testing
 
@@ -134,47 +135,19 @@ Three kinds of reference are used, in increasing order of strength:
 
 ## Findings
 
-The method has already produced two results that neither library reports.
+The current evidence is intentionally split into measurements and conditional experiments.
 
-### `PyMieScatt.MieQ` defaults to an air medium
+### Current Mie measurement
 
-Experiment 02 found that `miepython` and `PyMieScatt` disagree on `Qext` by
-about 0.2%. Adding an independent Mie series written from Bohren & Huffman
-(experiment 03) resolved it: `miepython` agrees with the reference to
-`1.8e-10`, while `PyMieScatt` deviates by `1.5e-3`.
+The current figure-generation run compares `miepython` and PyMieScatt, each with the surrounding medium stated explicitly, against the independent `optcon_reference` series over five diameters. The maximum relative discrepancies are `1.77e-10` for `miepython` and `3.06e-7` for PyMieScatt. The same run also measures the PyMieScatt library-default medium convention: its maximum discrepancy is `1.50e-3` over the five points. The adapter uses a narrowly scoped SciPy compatibility alias so the optional PyMieScatt import remains testable on current SciPy releases.
 
-The cause is a **default**, not the algorithm. `MieQ` ships
-`nMedium=1.00027316` and silently divides the refractive index by it. Passing
-`nMedium=1.0` reproduces the reference to `6.4e-14`. Series truncation was
-ruled out first: three different term counts give the same ten significant
-digits.
+### Current beam measurement
 
-### LightPipes' convolution propagator is a few percent wide
+The LightPipes comparison uses a 1-mm waist, 1064-nm wavelength, 20-mm window, and a distance of one Rayleigh range for the resolution sweep. The spectral `Forvard` result is within about `6.52e-9` relative error at `z=zR`. The convolution `Fresnel` result is about 6.9% wide at that point and remains 6.67--7.07% wide over 256--4096 samples. This is a result for the stated finite-window configuration, not a universal statement about every LightPipes setup.
 
-Experiment 04 compared both LightPipes propagators against the closed-form
-Gaussian width `w(z) = w0 sqrt(1 + (z/zR)^2)`. `Forvard` (spectral) matches to
-`2.1e-6`; `Fresnel` (convolution) is 2-7% wide across the whole range, and the
-error **does not shrink with finer sampling** (256 to 4096 samples all land
-near +7%), so it is not a resolution artefact.
+### Registry status
 
-Neither library warns the user about either of these.
-
-### What the second wave of engines confirmed
-
-Installing the missing numerical dependencies brought optiland (ray tracing),
-neuroptica (photonic circuits) and ceviche (FDFD with an autograd adjoint)
-under test. Each validated something optcon states on its own:
-
-* **optiland's paraxial `f2` for a biconvex N-BK7 singlet matches the ABCD
-  chain** assembled from `refracting_surface` and `free_space`, to 1e-6. That
-  test also caught a real error: the curved-interface matrix needs an
-  ``n1/n2`` factor in its lower-right entry, which only becomes visible once
-  the surface is combined with a finite thickness.
-* **neuroptica's `is_unitary` and `optcon.checks.is_unitary` agree** on four
-  random unitary matrices and four deliberately non-unitary ones.
-* **ceviche's autograd adjoint passes `check_gradient`** against central
-  differences: the derivative verifier applied to somebody else's solver
-  rather than to ours.
+The engine registry reports `ready`, `missing`, and import `error` separately. A registered engine without an importable dependency or shared observable is survey metadata, not a completed differential claim. The same rule applies to ray-tracing, diffraction, EM, and differentiable-engine entries.
 
 ## Testing philosophy
 

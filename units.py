@@ -103,8 +103,10 @@ class Unit:
     symbol: str | None = field(default=None, compare=False)
 
     def __post_init__(self) -> None:
-        if not math.isfinite(self.factor) or self.factor == 0.0:
-            raise UnitError(f"unit scale must be finite and non-zero, got {self.factor!r}")
+        if not math.isfinite(self.factor) or self.factor <= 0.0:
+            raise UnitError(
+                f"unit scale must be finite and strictly positive, got {self.factor!r}"
+            )
 
     # -- algebra ---------------------------------------------------------
     def __mul__(self, other: "Unit") -> "Unit":
@@ -199,7 +201,7 @@ _DERIVED_SYMBOLS: dict[str, tuple[float, dict[str, int]]] = {
     "C": (1.0, {"current": 1, "time": 1}),
     "V": (1.0, {"mass": 1, "length": 2, "time": -3, "current": -1}),
     "ohm": (1.0, {"mass": 1, "length": 2, "time": -3, "current": -2}),
-    "F": (-1.0, {"mass": -1, "length": -2, "time": 4, "current": 2}),
+    "F": (1.0, {"mass": -1, "length": -2, "time": 4, "current": 2}),
     "T": (1.0, {"mass": 1, "time": -2, "current": -1}),
     "eV": (1.602176634e-19, {"mass": 1, "length": 2, "time": -2}),
     "lm": (1.0, {"luminous": 1, "solid_angle": 1}),

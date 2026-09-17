@@ -38,6 +38,24 @@ def test_finite_difference_jacobian_of_a_linear_map_is_the_map():
     assert jacobian == pytest.approx(matrix)
 
 
+def test_finite_difference_helpers_promote_integer_points_to_floating_dtype():
+    point = np.array([1, 2], dtype=int)
+
+    gradient = finite_difference_gradient(lambda x: float(np.sum(x**2)), point)
+    jacobian = finite_difference_jacobian(lambda x: 2.0 * x, point)
+
+    assert gradient.dtype.kind == "f"
+    assert gradient == pytest.approx([2.0, 4.0])
+    assert jacobian.dtype.kind == "f"
+    assert jacobian == pytest.approx(2.0 * np.eye(2))
+
+
+@pytest.mark.parametrize("eps", [0.0, -1.0, float("nan"), float("inf")])
+def test_finite_difference_helpers_reject_invalid_step_sizes(eps):
+    with pytest.raises(ValueError, match="eps must be finite and strictly positive"):
+        finite_difference_gradient(quadratic, np.array([1.0, 2.0]), eps=eps)
+
+
 def test_correct_gradient_passes():
     x = np.array([0.3, -1.2, 2.5])
     report = check_gradient(quadratic, quadratic_grad, x)
@@ -85,12 +103,50 @@ def test_dot_test_rejects_a_forward_map_masquerading_as_its_own_adjoint():
         assert_adjoint(forward, wrong_adjoint, np.array([0.5, -0.5, 1.0]), name="propagator")
 
 
+def test_dot_test_uses_the_complex_hermitian_inner_product():
+    matrix = np.array([[1.0 + 2.0j, 2.0 - 1.0j], [0.5j, 1.0 - 0.25j]])
+
+    def forward(x):
+        return matrix @ x
+
+    def adjoint(y):
+        return matrix.conj().T @ y
+
+    report = dot_test(forward, adjoint, np.array([0.5 + 0.2j, -0.5 + 0.1j]))
+    assert report["ok"] is True
+
+
+@pytest.mark.parametrize("eps", [0.0, -1.0, float("nan"), float("inf")])
+def test_dot_test_rejects_invalid_step_sizes(eps):
+    def forward(x):
+        return 2.0 * x
+
+    def adjoint(w):
+        return 2.0 * w
+
+    with pytest.raises(ValueError, match="eps must be finite and strictly positive"):
+        dot_test(forward, adjoint, np.array([1.0]), eps=eps)
+
+
 def test_adjoint_of_the_wrong_shape_is_reported_clearly():
     def forward(x):
         return np.array([x[0], x[1]])
 
     with pytest.raises(AdjointCheckFailure, match="shape"):
         assert_adjoint(forward, lambda y: np.zeros(5), np.array([1.0, 2.0]))
+
+
+def test_dot_test_rejects_forward_output_shape_changes_under_perturbation():
+    def forward(x):
+        if x[0] > 0.0:
+            return np.array([x[0]])
+        return np.array([x[0], x[0]])
+
+    def adjoint(w):
+        return np.array([np.sum(w)])
+
+    with pytest.raises(AdjointCheckFailure, match="forward output shape changed"):
+        dot_test(forward, adjoint, np.array([0.0]), seed=0, eps=1e-6)
 
 
 def test_assert_gradient_matches_accepts_the_true_gradient():

@@ -57,14 +57,14 @@ Physical invariant contracts for optical operators.
 - `assert_reciprocal` - Declare a travelling-wave operator reciprocal; raise if it is not.
 - `assert_unitary` - Declare an operator lossless; raise if it is not.
 - `check_gradient` - Compare a supplied gradient against central differences.
-- `dot_test` - The classic <Jv, w> == <v, J^T w> adjoint check.
+- `dot_test` - The classic complex inner-product adjoint check.
 - `finite_difference_gradient` - Central-difference gradient of a scalar function.
 - `finite_difference_jacobian` - Central-difference Jacobian of a vector-valued function.
 - `gain_above_unity` - How far the largest singular value exceeds unity (0 for passive).
 - `is_passive` - 
 - `is_reciprocal` - 
 - `is_unitary` - 
-- `reciprocity_error` - ``max|M - M^T|``; zero exactly when the operator is reciprocal.
+- `reciprocity_error` - ``max|M - M^T|``; evaluates to zero when the operator matrix is symmetric.
 - `singular_values` - Singular values of the operator, in descending order.
 - `unitarity_error` - ``max|M^H M - I|``; zero exactly when the operator is lossless.
 
@@ -114,6 +114,15 @@ Step-index optical fibre.
 - `numerical_aperture` - Half-angle acceptance cone, ``sqrt(n_core^2 - n_clad^2)``.
 - `propagation_constant` - ``beta`` of the fundamental mode, via Gloge's approximation.
 - `v_number` - Normalised frequency ``V = 2 pi a NA / lambda``.
+
+## `optcon.fox_li`
+
+Fox-Li cavity diffraction integral operator for open resonators.
+
+- `fox_li_operator` - Construct the discretized Nystrom Fredholm integral operator matrix.
+- `fox_li_power_iteration` - Simulate physical wave relaxation inside the open resonator via power iteration.
+- `fresnel_number` - Fresnel number N_F = a^2 / (lambda * L) of the open resonator.
+- `solve_fox_li_modes` - Solve for the lowest-loss transverse eigenmodes of the open resonator.
 
 ## `optcon.fresnel`
 
@@ -187,14 +196,14 @@ Laser physics for a four-level gain medium.
 
 ## `optcon.modes`
 
-Gauss-Hermite and Laguerre-Gauss modes with explicit basis-aware decomposition and reconstruction.
+Gauss-Hermite and Laguerre-Gauss modes for sampled optical fields.
 
-- `decompose` - Project ``field`` onto Hermite-Gauss or Laguerre-Gauss modes up to ``max_order``.
+- `decompose` - Project ``field`` onto the requested modal basis up to ``max_order``.
 - `hermite_gauss` - The normalised ``HG_mn`` mode, sampled on coordinates ``x`` and ``y``.
 - `laguerre_gauss` - The normalised ``LG_p^l`` mode: a vortex of charge ``l`` when ``l != 0``.
 - `mode_content` - Modes sorted by descending power fraction in the requested basis.
 - `mode_power_fractions` - Fraction of the field's power carried by each mode.
-- `reconstruct` - Rebuild a field from basis coefficients on the grid of ``field``; signed Laguerre charges are supported.
+- `reconstruct` - Rebuild a field from coefficients in the requested modal basis.
 
 ## `optcon.mtf`
 
@@ -216,6 +225,15 @@ Mueller calculus: the intensity-domain counterpart of Jones calculus.
 - `mueller_retarder` - An ideal waveplate: lossless, so ``S0`` is untouched.
 - `mueller_rotator` - A polarisation rotator.
 - `stokes_vector` - Stokes vector of a Jones state, as a plain 4-vector.
+
+## `optcon.nlse`
+
+Generalized Nonlinear Schrodinger Equation (G-NLSE) Split-Step Fourier Solver.
+
+- `gaussian_pulse` - Create a transform-limited Gaussian pulse A(T) = sqrt(P0) * exp(-T^2 / (2 T0^2)).
+- `soliton_parameters` - Compute fundamental soliton scales: L_D, L_NL, z_0, and peak power P_0.
+- `soliton_pulse` - Create a fundamental hyperbolic secant soliton pulse A(T) = sqrt(P0) * sech(T / T0).
+- `solve_nlse` - Propagate pulse along distance using the symmetric Split-Step Fourier Method (SSFM).
 
 ## `optcon.noise`
 
@@ -354,4 +372,4 @@ Guided modes of a symmetric slab waveguide.
 
 ---
 
-208 public functions across 31 modules.
+216 public functions across 33 modules.

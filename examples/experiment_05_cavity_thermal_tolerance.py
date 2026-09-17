@@ -24,8 +24,8 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.figure import Figure
 
 from optcon import Quantity, q, unit
 from optcon.cavity import finesse, free_spectral_range, g_parameters
@@ -292,7 +292,8 @@ def run_experiment(output_dir: str | Path | None = None) -> dict[str, float]:
     figures_dir.mkdir(parents=True, exist_ok=True)
     fig_path = figures_dir / "fig4_cavity_tolerance.png"
 
-    fig, axes = plt.subplots(1, 3, figsize=(16, 4.5), dpi=300)
+    fig = Figure(figsize=(16, 4.5), dpi=300)
+    axes = fig.subplots(1, 3)
 
     # Panel (a): Angular Misalignment
     ax0 = axes[0]
@@ -353,7 +354,6 @@ def run_experiment(output_dir: str | Path | None = None) -> dict[str, float]:
 
     fig.tight_layout()
     fig.savefig(fig_path, bbox_inches="tight")
-    plt.close(fig)
     print(f"\n[OK] Publication-grade figure saved to: {fig_path}")
 
     return {

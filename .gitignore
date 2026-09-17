@@ -27,5 +27,10 @@ Thumbs.db
 
 # Temporary review renders and intermediate builds
 review_pdf/
+tmp/
+tmp_pytest/
+docs/superpowers/plans/
+docs/paper_cpc_reviewed.pdf
 docs/*_build.*
+docs/*_release.*
 docs/*_v2.*

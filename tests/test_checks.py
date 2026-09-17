@@ -96,3 +96,32 @@ def test_unitary_check_accepts_dimensionless_quantities():
 def test_dimensioned_matrix_is_rejected():
     with pytest.raises(DimensionError):
         is_unitary(q(np.eye(2), "mm"))
+
+
+def test_nonfinite_operator_is_not_passive():
+    assert not is_passive(np.array([[np.nan + 0.0j]]))
+
+
+def test_rectangular_contraction_is_passive():
+    contraction = np.array(
+        [
+            [0.5, 0.0],
+            [0.0, 0.25],
+            [0.0, 0.0],
+        ],
+        dtype=complex,
+    )
+
+    assert is_passive(contraction)
+    assert_passive(contraction, name="rectangular contraction")
+
+
+def test_assert_passive_reports_nonfinite_operator_as_contract_violation():
+    with pytest.raises(ContractViolation, match="non-finite"):
+        assert_passive(np.array([[np.nan + 0.0j]]), name="invalid operator")
+
+
+@pytest.mark.parametrize("shape", [(0, 0), (0, 2), (2, 0)])
+def test_operator_contracts_reject_empty_matrices(shape):
+    with pytest.raises(ValueError, match="non-empty"):
+        assert_passive(np.empty(shape), name="empty operator")

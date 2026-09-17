@@ -14,7 +14,7 @@ properties the computer can check:
   declared and checked, and a waveplate, a polariser and a rotator each fail a
   different one;
 * **derivatives** - a gradient is verified against finite differences and its
-  adjoint with the `<Jv, w> == <v, J^T w>` dot-product test.
+  adjoint with the `<Jv, w> == <v, J^\dagger w>` dot-product test.
 
 On top of that it carries a closed-form optics toolkit (ABCD matrices,
 Gaussian beams, Fresnel, Jones calculus, cavities, fibre, gratings, thin-film
@@ -96,20 +96,19 @@ sqrt(amplitude_ratio(0.9))       # -> AmplitudeOrderError: that is a sqrt too fa
 
 ## What the differential tests found
 
-| Finding | Evidence |
-| --- | --- |
-| `PyMieScatt.MieQ` defaults to `nMedium=1.00027316` (air) and scales the index silently | shifts `Qext` by 1.5e-3; `nMedium=1.0` agrees with an independent Mie series to 6.4e-14 |
-| LightPipes' `Fresnel` convolution propagator is 2-7% wide on a Gaussian beam | `Forvard` matches the closed form to 2.1e-6; the error does not shrink with sampling |
-| Two thin-film engines with different internal units agree | `tmm_core` (nm) vs `tmm_fast` (SI metres): 4.1e-08 |
-| A ray tracer and an ABCD chain agree on a thick lens | optiland's paraxial `f2` vs `optcon.elements`: 1e-06 |
-| Two libraries agree on what "unitary" means | neuroptica's `is_unitary` vs `optcon.checks.is_unitary`: identical on 8 matrices |
-| An external adjoint solver passes optcon's gradient verifier | ceviche's autograd `jacobian` vs finite differences: 1e-03 |
-| Fresnel interface coefficients agree | `optcon.fresnel` vs `tmm_core`: 1e-12 |
-| A wavefront-propagation package reproduces the Airy radius | `poppy` vs `optcon.diffraction`: 2% |
-| A waveguide mode solver satisfies its own dispersion relation | every slab mode has residual < 1e-6 and `u^2 + w^2 = V^2` |
-| Three independent propagators agree | optcon's FFT, `LightPipes` spectral and `diffractio` CZT: 2e-02 |
+The repository distinguishes measurements that can be rerun in the current environment from optional or survey-only engine records. The current figure-generation run measured:
 
-Five runnable experiments reproduce all of this (or run all in one pass):
+| Finding | Current evidence |
+| --- | --- |
+| `miepython` versus the independent `optcon_reference` series | Maximum relative discrepancy `1.77e-10` over five diameters; see `docs/data/fig2_mie_adjudication.csv`. |
+| PyMieScatt with explicit `nMedium=1.0` versus the independent reference | Maximum relative discrepancy `3.06e-7` over five diameters; the adapter states the medium explicitly. |
+| PyMieScatt library-default medium characterization | Maximum relative discrepancy `1.50e-3` over five diameters, showing that the default changes the physical query. |
+| LightPipes `Fresnel` versus the Gaussian closed form | About `6.9%` excess width at `z=z_R`, persistent from 256 to 4096 samples; `Forvard` remains within about `6.52e-9` at that point. |
+| Registry-only engines | Conventions are recorded, but numerical claims are withheld when the dependency or shared observable is unavailable. |
+
+All generated curves are accompanied by CSV exports under `docs/data`. Optional-engine status is reported by `python -m optcon.benchmarks.engine_status` and distinguishes `ready`, `missing`, and import `error`.
+
+The runnable examples reproduce the available checks (or run all in one pass):
 
 ```bash
 python -m optcon.benchmarks.run_all               # reproduce all experiments & benchmarks
@@ -147,45 +146,36 @@ rebuilt = reconstruct(coefficients, field, waist=q(50.0, "um"), basis="laguerre"
 
 ## Performance
 
+Run the local benchmark with:
+
 ```bash
 python -m optcon.benchmarks.bench
 ```
 
-The benchmark reports wall time and peak allocation per operation. The modal
-path was rewritten around the separability of the Hermite-Gauss basis and the
-propagation transfer functions around separable phase factors and fewer
-temporaries; [docs/PERFORMANCE.md](docs/PERFORMANCE.md) has the before/after
-numbers, the two correctness traps the optimisation walked into, and the
-sampling regime of each propagator.
+The benchmark uses best-of-three wall times, reports peak traced allocation, and writes the same measurements to `docs/data/benchmark_operations.csv`. The current recorded run measured the order-3 modal decomposition at `0.0006535 s` and `0.0997 MiB`, versus `0.2784134 s` and `16.0086 MiB` for the correctness-matched naive two-dimensional baseline. The corresponding timing ratio is approximately `4.26e2` for that run. Other recorded best times were `0.0076406 s` for Fresnel propagation, `0.0148482 s` for angular-spectrum propagation, `0.0067240 s` for MTF from a PSF, and `0.0011754 s` for field construction. These values are machine-specific and should be regenerated rather than treated as fixed performance guarantees; environment provenance is stored in the CSV.
 
-| operation (512^2) | speed | peak memory |
-| --- | --- | --- |
-| modal decomposition | 460x faster | 16.0 -> 0.1 MiB |
-| modal reconstruction | ~45x faster | 16 -> 4.1 MiB |
-| Fresnel propagation | 3.7x faster | 18.0 -> 12.0 MiB |
-| angular-spectrum propagation | 1.9x faster | 24.4 -> 18.4 MiB |
-| MTF from a PSF | 1.9x faster | unchanged |
-| field construction | 4.5x faster | 10.0 -> 6.0 MiB |
+The separate Figure 4(a) micro-benchmark uses one warm-up followed by seven timed calls and reports the median. At array length `10`, the raw and checked phase kernels took `4.30 us` and `26.70 us`; at array length `10^6`, they took `32.682 ms` and `31.689 ms`, respectively. Across the sampled lengths, the ratio ranged from `0.970` to `6.209`; fixed boundary cost is visible at small sizes, while timing variability and the vectorized kernel dominate at large sizes. The order reversal is not interpreted as negative checking overhead.
 
+Solver discretization evidence is recorded separately in `docs/data/solver_convergence.csv`. Fox-Li candidates are compared with a 512-point numerical reference, and G-NLSE candidates with a 400-step numerical reference. These are finer discretizations of the same implementation and configuration, not analytic or exact continuum solutions; the observed G-NLSE refinement is approximately second order over the resolved ranges, while no asymptotic order is claimed for the Fox-Li plateau.
 
 ## Key Design Principles
 
 1. **Angle as an independent base dimension**: Standard SI dimensional analysis treats radians as dimensionless, permitting angles to be added directly to bare scalars. In optical alignment and beam propagation, this frequently masks unit errors. `optcon` defines `angle` as an independent base dimension alongside length, mass, and time.
 2. **Amplitude order algebra (`amp_order`)**:
    Every `Quantity` optionally carries an integer amplitude order $k$:
-   - `None`: Untracked / permissive numeric mode (default)
+   - `None` / $\bot$: Untracked / permissive numeric mode (default)
    - `0`: Dimensionless ratio, round-trip count, or operator matrix
    - `1`: Field amplitude (electric field $E$, transmission amplitude $t = \sqrt{T}$)
    - `2`: Power or intensity (irradiance, power transmission $T = |t|^2$)
 
    Multiplication adds orders ($\text{order}(a \times b) = k_a + k_b$), division subtracts orders, and `sqrt` requires an even order and halves it. Adding or comparing mismatched orders raises `AmplitudeOrderError`.
 3. **Boundary verification with unboxed computation**:
-   Function boundaries validate dimensions and invariant contracts via `@checked`. Inner loops execute directly on unboxed NumPy arrays without wrapper overhead.
+   Function boundaries validate dimensions and invariant contracts via `@checked`. Inner loops execute directly on unboxed NumPy arrays; the boundary cost is measured separately and depends on workload and array size.
 4. **Executable physical invariants and adjoint verification**:
    - `assert_unitary(M)`: Enforces energy preservation ($M^\dagger M = I$)
    - `assert_passive(M)`: Enforces passivity ($\sigma_{\max}(M) \le 1$)
    - `assert_reciprocal(M)`: Enforces reciprocity ($M = M^T$)
-   - `dot_test(forward, adjoint, x)`: Claerbout's adjoint dot-product test ensuring $\langle Jv, w \rangle = \langle v, J^T w \rangle$ for gradient validation.
+   - `dot_test(forward, adjoint, x)`: Claerbout's Hermitian adjoint dot-product test ensuring $\langle Jv, w \rangle = \langle v, J^\dagger w \rangle$ for gradient validation.
 
 ## Scope and Boundaries
 

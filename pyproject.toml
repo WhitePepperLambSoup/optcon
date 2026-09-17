@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "optcon"
-version = "0.1.0"
+version = "0.1.1"
 description = "Dimensional, contract-checked physical computation for optics and machine learning"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -30,9 +30,27 @@ classifiers = [
 dependencies = ["numpy>=1.24", "scipy>=1.10"]
 
 [project.optional-dependencies]
-dev = ["pytest>=7", "pytest-cov>=4.0", "ruff>=0.5", "mypy>=1.8", "matplotlib>=3.7"]
-engines = ["miepython>=2.5", "PyMieScatt>=1.7", "LightPipes>=2.1", "tmm>=0.1.8"]
+dev = [
+  "build>=1.2",
+  "setuptools>=68",
+  "wheel>=0.42",
+  "pytest>=7",
+  "pytest-cov>=4.0",
+  "ruff>=0.5",
+  "mypy>=1.8",
+  "matplotlib>=3.7",
+]
+engines = [
+  "miepython>=2.5",
+  "PyMieScatt>=1.7",
+  "shapely>=2.0",
+  "LightPipes>=2.1",
+  "tmm>=0.1.8",
+]
 all = [
+  "build>=1.2",
+  "setuptools>=68",
+  "wheel>=0.42",
   "pytest>=7",
   "pytest-cov>=4.0",
   "ruff>=0.5",
@@ -40,6 +58,7 @@ all = [
   "matplotlib>=3.7",
   "miepython>=2.5",
   "PyMieScatt>=1.7",
+  "shapely>=2.0",
   "LightPipes>=2.1",
   "tmm>=0.1.8",
 ]
@@ -70,6 +89,7 @@ show_missing = true
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+extend-exclude = ["tmp", "tmp_pytest"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B"]
@@ -88,6 +108,7 @@ known-first-party = ["optcon"]
 # only parse when told the target is 3.12 or newer.  The runtime floor stays
 # at 3.11 (see requires-python); this affects type checking only.
 python_version = "3.12"
+exclude = ["^tmp/", "^tmp_pytest/"]
 warn_unused_ignores = true
 warn_redundant_casts = true
 no_implicit_optional = true

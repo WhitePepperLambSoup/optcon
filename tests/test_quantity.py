@@ -213,6 +213,44 @@ def test_numpy_ufunc_branch_coverage():
         q1 ** np.array([1, 2])
 
 
+def test_numeric_predicates_use_the_quantity_native_values():
+    values = q(np.array([1.0, np.nan, np.inf]), "m")
+
+    assert np.array_equal(np.isfinite(values), np.array([True, False, False]))
+    assert np.array_equal(np.isnan(values), np.array([False, True, False]))
+    assert np.array_equal(np.isinf(values), np.array([False, False, True]))
+
+
+def test_sign_of_a_dimensional_quantity_returns_a_dimensionless_ratio():
+    result = np.sign(q(np.array([-2.0, 0.0, 3.0]), "m"))
+
+    assert result.is_dimensionless
+    assert result.amp_order == 0
+    assert np.array_equal(result.value, np.array([-1.0, 0.0, 1.0]))
+
+
+def test_two_quantity_ufuncs_preserve_and_validate_amplitude_order():
+    first = q(2.0, "m", amp_order=1)
+    second = q(3.0, "m", amp_order=1)
+
+    maximum = np.maximum(first, second)  # type: ignore[call-overload]
+    hypotenuse = np.hypot(first, second)  # type: ignore[call-overload]
+    assert maximum.amp_order == 1
+    assert hypotenuse.amp_order == 1
+
+    with pytest.raises(AmplitudeOrderError):
+        np.maximum(first, q(3.0, "m", amp_order=2))  # type: ignore[call-overload]
+    with pytest.raises(AmplitudeOrderError):
+        np.hypot(first, q(3.0, "m", amp_order=2))  # type: ignore[call-overload]
+
+
+def test_arctan2_of_compatible_quantities_returns_an_angle():
+    angle = np.arctan2(q(1.0, "m"), q(1.0, "m"))  # type: ignore[call-overload]
+
+    assert angle.to_value("rad") == pytest.approx(np.pi / 4.0)
+    assert angle.amp_order == 0
+
+
 def test_amplitude_order_division_rejects_negative_order():
     field = q(1.0, "1", amp_order=1)
     power = q(2.0, "1", amp_order=2)
@@ -231,7 +269,17 @@ def test_amplitude_order_negative_power_rejected():
         _ = field ** -1
 
 
-def test_amplitude_order_monoid_properties():
+def test_quantity_constructor_rejects_negative_amplitude_order():
+    with pytest.raises(AmplitudeOrderError, match="non-negative"):
+        q(1.0, "1", amp_order=-1)
+
+
+def test_quantity_constructor_rejects_non_integer_amplitude_order():
+    with pytest.raises(AmplitudeOrderError, match="integer"):
+        q(1.0, "1", amp_order=1.5)  # type: ignore[arg-type]
+
+
+def test_amplitude_order_algebra_properties():
     # Closure under valid operations in N_0
     for o1 in [0, 1, 2, 3]:
         for o2 in [0, 1, 2, 3]:
@@ -247,4 +295,3 @@ def test_amplitude_order_monoid_properties():
             else:
                 with pytest.raises(AmplitudeOrderError):
                     _ = q_a / q_b
-

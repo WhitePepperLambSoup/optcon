@@ -18,7 +18,6 @@ STRICT_ENGINE_NAMES = {
     "lightpipes_forvard",
     "lightpipes_fresnel",
     "tmm_core",
-    "tmm_fast",
 }
 
 

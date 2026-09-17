@@ -1,7 +1,7 @@
 """Fox-Li cavity diffraction integral operator for open resonators.
 
-This module solves the Fredholm integral equation of the second kind for
-optical resonators with finite mirror apertures:
+This module solves a Fredholm integral-operator eigenvalue problem for optical
+resonators with finite mirror apertures:
 
     gamma * u(x_2) = \\int_{-a_1}^{a_1} K(x_1, x_2) u(x_1) dx_1
 
@@ -45,7 +45,10 @@ def _length_of(value: Any, context: str) -> tuple[float, Unit]:
     if isinstance(value, Quantity):
         if value.unit.dimension != _LENGTH:
             raise DimensionError(f"{context}: expected a length, got {value.unit}")
-        return float(value.value), value.unit
+        scalar = float(value.value)
+        if not math.isfinite(scalar):
+            raise ValueError(f"{context}: length must be finite, got {value}")
+        return scalar, value.unit
     raise TypeError(
         f"{context}: expected a length with units, e.g. q(100, 'mm'), "
         f"got a bare {type(value).__name__}"
@@ -58,11 +61,32 @@ def _angle_of(value: Any, context: str) -> float:
     if isinstance(value, Quantity):
         if value.unit.dimension != _ANGLE:
             raise DimensionError(f"{context}: expected an angle, got {value.unit}")
-        return float(value.to_value("rad"))
+        scalar = float(value.to_value("rad"))
+        if not math.isfinite(scalar):
+            raise ValueError(f"{context}: angle must be finite, got {value}")
+        return scalar
     raise TypeError(
         f"{context}: expected an angle with units, e.g. q(100, 'urad'), "
         f"got a bare {type(value).__name__}"
     )
+
+
+def _integer_at_least(value: Any, name: str, minimum: int) -> int:
+    if isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, np.integer)):
+        raise ValueError(f"{name} must be an integer, got {value!r}")
+    integer = int(value)
+    if integer < minimum:
+        raise ValueError(f"{name} must be at least {minimum}, got {value!r}")
+    return integer
+
+
+def _nonnegative_integer(value: Any, name: str) -> int:
+    if isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, np.integer)):
+        raise ValueError(f"{name} must be a non-negative integer, got {value!r}")
+    integer = int(value)
+    if integer < 0:
+        raise ValueError(f"{name} must be a non-negative integer, got {value!r}")
+    return integer
 
 
 @dataclass(frozen=True)
@@ -101,6 +125,13 @@ class FoxLiResonator:
         a_val, _ = _length_of(self.aperture, "FoxLiResonator.aperture")
         if lam_val <= 0.0 or l_val <= 0.0 or a_val <= 0.0:
             raise ValueError("wavelength, length, and aperture must be positive")
+        for name, value in (("g1", self.g1), ("g2", self.g2)):
+            try:
+                scalar = float(value)
+            except (TypeError, ValueError) as error:
+                raise TypeError(f"{name} must be a finite real number") from error
+            if not math.isfinite(scalar):
+                raise ValueError(f"{name} must be finite, got {value!r}")
         if self.geometry not in {"strip", "circular"}:
             raise ValueError(
                 f"geometry must be 'strip' or 'circular', got {self.geometry!r}"
@@ -148,8 +179,8 @@ def fox_li_operator(
     weights : np.ndarray
         Physical quadrature integration weights.
     """
-    if num_points < 16:
-        raise ValueError(f"num_points must be at least 16, got {num_points}")
+    num_points = _integer_at_least(num_points, "num_points", 16)
+    azimuthal_order = _nonnegative_integer(azimuthal_order, "azimuthal_order")
 
     n_f = fresnel_number(resonator)
     a_m = float(resonator.aperture.to_value("m"))
@@ -185,7 +216,7 @@ def fox_li_operator(
 
     else:
         # Circular geometry: Gauss-Legendre on rho in [0, 1]
-        m = int(azimuthal_order)
+        m = azimuthal_order
         xi_std, w_std = _sp.roots_legendre(num_points)
         rho = 0.5 * (xi_std + 1.0)
         w_rho = 0.5 * w_std
@@ -238,6 +269,7 @@ def solve_fox_li_modes(
     list[FoxLiMode]
         Modes ordered by diffraction loss ascending (fundamental mode first).
     """
+    num_modes = _integer_at_least(num_modes, "num_modes", 1)
     k_sym, coords, weights = fox_li_operator(
         resonator, num_points=num_points, azimuthal_order=azimuthal_order
     )
@@ -347,6 +379,12 @@ def fox_li_power_iteration(
     history : dict[str, list[float]]
         Iteration history containing 'loss', 'phase_shift', and 'error'.
     """
+    max_iter = _integer_at_least(max_iter, "max_iter", 1)
+    if not math.isfinite(tol) or tol <= 0.0:
+        raise ValueError(
+            f"tol must be finite and strictly positive, got {tol!r}"
+        )
+
     k_sym, coords, weights = fox_li_operator(
         resonator, num_points=num_points, azimuthal_order=azimuthal_order
     )
@@ -368,6 +406,8 @@ def fox_li_power_iteration(
             raise ValueError(
                 f"initial_field must have shape ({num_points},), got {u_init.shape}"
             )
+        if not np.isfinite(u_init).all():
+            raise ValueError("initial_field must contain only finite values")
 
     if resonator.geometry == "strip":
         v = w_sqrt * u_init
@@ -375,7 +415,7 @@ def fox_li_power_iteration(
         v = w_sqrt * np.sqrt(np.maximum(rho, 1e-12)) * u_init
 
     v_norm = np.linalg.norm(v)
-    if v_norm == 0.0:
+    if not math.isfinite(float(v_norm)) or v_norm == 0.0:
         raise ValueError("initial field cannot be identically zero")
     v = v / v_norm
 
@@ -400,11 +440,10 @@ def fox_li_power_iteration(
         history["phase_shift"].append(float(cmath.phase(gamma)))
         history["error"].append(float(err))
 
-        if err < tol:
-            break
-
         gamma_prev = gamma
         v = v_next
+        if err < tol:
+            break
 
     mag = abs(gamma)
     loss = max(0.0, 1.0 - mag * mag)

@@ -65,6 +65,10 @@ def main() -> int:
             "Experiment 05: Laser Cavity Alignment & Thermal Tolerance Budget",
             "optcon.examples.experiment_05_cavity_thermal_tolerance",
         ),
+        (
+            "Solver discretization-convergence measurements",
+            "optcon.benchmarks.convergence",
+        ),
         ("Performance & Allocation Benchmarks", "optcon.benchmarks.bench"),
     ]
 

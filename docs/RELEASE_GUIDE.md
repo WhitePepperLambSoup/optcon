@@ -1,95 +1,121 @@
-# optcon Release & Publication Submission Guide
+# optcon Release and Submission Guide
 
-This guide provides step-by-step instructions for publishing **optcon** and submitting manuscripts to **JOSS** (Journal of Open Source Software) and/or **CPC** (Computer Physics Communications).
+This guide describes the local checks and external steps needed to prepare
+`optcon` for a software or computational-physics submission. Local checks are
+evidence about this checkout; they do not guarantee editorial acceptance,
+publication, a DOI, or a fee waiver.
 
----
+## 1. Before a release candidate
 
-## 1. Prerequisites Checklist
+Confirm the following items manually:
 
-Before submitting to any journal or indexing service, run the gates below from the repository root:
-- [x] 419 tests collected and passing locally: `python -m pytest tests -q`.
-- [x] Core-library coverage is 88% statement coverage when examples and benchmark entry points are excluded by `pyproject.toml`: `python -m pytest tests --cov=optcon --cov-report=term-missing`.
-- [x] Type checking: `python -m mypy .` (0 errors across 88 source files in the latest local run).
-- [x] Linter: `python -m ruff check .`.
-- [x] Reproducibility suite: `python -m optcon.benchmarks.run_all`.
-- [x] Optional-engine status: `python -m optcon.benchmarks.engine_status --strict`.
-- [x] OSI License: MIT License in `LICENSE`.
-- [x] JOSS metadata: `paper.md` and `paper.bib` with complete author affiliations.
-- [x] CITATION file: `CITATION.cff` with metadata and BibTeX entry.
-- [x] Contribution guidelines: `CONTRIBUTING.md`.
+- The author list, affiliations, ORCID values, license, and competing-interest
+  statement are correct.
+- The public repository contains the source, tests, examples, documentation,
+  figure sources, generated CSV data, and the manuscript files required by the
+  selected venue.
+- Optional-engine availability is recorded for the machine used to generate
+  the reported results.
+- The working tree and revision used for submission are recorded. Do not
+  describe an uncommitted working tree as an immutable release.
 
----
+The repository already has Git history. Do not initialize a second repository
+or overwrite existing branches as part of this checklist.
 
-## 2. GitHub Repository Initialization
+## 2. Local validation gates
 
-If the repository is not yet public on your GitHub account:
+Run these commands from the repository root with the project environment
+activated. The commands below are the validation protocol, not fixed claims
+about test counts, coverage, runtime, or hardware performance.
 
 ```bash
-# 1. Initialize git and commit all work
-git init
-git add .
-git commit -m "feat: initial release candidate v0.1.0 with complete JOSS paper and verification suite"
-
-# 2. Create a public repository on GitHub named 'optcon'
-# 3. Add the remote and push
-git remote add origin https://github.com/WhitePepperLambSoup/optcon.git
-git branch -M main
-git push -u origin main
+python -m pytest tests -q
+python -m ruff check .
+python -m mypy .
+python -m optcon.benchmarks.engine_status --strict
+python -m optcon.benchmarks.run_all
+python docs/generate_figures.py
+git diff --check
 ```
 
----
+`run_all` and `generate_figures.py` write benchmark and figure data. Review the
+resulting CSV files, especially the environment provenance, before copying
+numbers into a manuscript. Re-run the figure script after any benchmark or
+solver change.
 
-## 3. JOSS Pre-Submission Gatekeeping Requirements
+For the LaTeX manuscript, compile from `docs` with the installed TeX toolchain
+and resolve all citations and references:
 
-Before submitting to JOSS, review the [JOSS Submitting Guidelines](https://joss.readthedocs.io/en/latest/submitting.html):
-- **Public Development Track Record**: JOSS reviews established research software. Submissions from brand-new, zero-history repositories are routinely rejected at pre-review. Establish a public repository, publish early releases, and maintain ongoing commit activity (JOSS editors typically expect ~6 months of public evolution or a proven development lifecycle).
-- **Evidence of Real Research Use**: The software must demonstrate actual research application (e.g., cited in a student thesis, preprinted paper, lab experiment at ANU, or applied research workflow) rather than hypothetical future utility.
-- **Generative AI Policy**: JOSS requires full disclosure of AI-assisted drafting, coding, or testing, with the human authors assuming complete responsibility. This is documented in `paper.md`.
+```bash
+pdflatex paper_cpc.tex
+bibtex paper_cpc
+pdflatex paper_cpc.tex
+pdflatex paper_cpc.tex
+```
 
----
+Then inspect the PDF visually after rendering every page to PNG. Check for
+clipped text, bad equation breaks, unreadable legends, table overflow, missing
+glyphs, and undefined references. A successful compiler exit code alone is not
+enough.
 
-## 4. JOSS Review & Publication Lifecycle (Diamond Open Access: $0)
+## 3. Manuscript packages
 
-### Step 4.1: Submit the Paper
-1. Ensure your public GitHub repository is accessible.
-2. Navigate to: [https://joss.theoj.org/papers/new](https://joss.theoj.org/papers/new)
-3. Enter repository URL: `https://github.com/WhitePepperLambSoup/optcon`
-4. Select branch `main` and specify path `paper.md`.
-5. Submit for editorial pre-review.
+`paper.md` is the JOSS-style manuscript source. `docs/paper_cpc.tex` is the
+Elsevier/CPC-oriented LaTeX source. They have different format and submission
+requirements, so validate the source against the current author guidelines of
+the venue actually selected.
 
-### Step 4.2: Open GitHub Peer Review
-1. JOSS opens a transparent issue on `openjournals/joss-reviews`.
-2. The editorial bot (`@editorialbot`) validates `paper.md` formatting and renders the draft PDF.
-3. Two independent reviewers evaluate code quality, documentation, test suite execution, and research claims.
-4. Authors respond to reviewer feedback via GitHub comments and commit fixes directly to `main`.
+Before submission, verify that:
 
-### Step 4.3: Acceptance & Post-Review Archive Deposit (Zenodo DOI)
-*Note on timing*: Permanent archiving on Zenodo/Figshare occurs **after** the paper is accepted:
-1. When all reviewer checkboxes are completed, the editor instructs you to tag the final accepted release:
-   ```bash
-   git tag -a v0.1.0 -m "optcon v0.1.0 accepted JOSS release"
-   git push origin v0.1.0
-   ```
-2. Zenodo automatically mints an archive deposit DOI (e.g., `10.5281/zenodo.XXXXXXX`).
-3. In the review thread, issue:
-   `@editorialbot deposit <zenodo-doi>`
-4. The editor verifies the deposit and assigns the official JOSS CrossRef DOI.
+- every reported measurement can be traced to a CSV row or a documented test;
+- optional or unavailable engines are clearly labeled and are not represented
+  by fabricated data;
+- the controlled nonuniform-grid alignment example is not described as a complete inverse-
+  design, automatic-differentiation, or reinforcement-learning system;
+- numerical references used for convergence are identified as finer numerical
+  discretizations rather than analytic truth;
+- limitations, external-engine conventions, and hardware dependence are
+  visible to reviewers;
+- the AI-use disclosure matches the authors' actual process.
 
----
+## 4. Git and archival workflow
 
-## 5. Elsevier CPC / SoftwareX Submission Walkthrough
+Use the existing repository workflow chosen by the authors. Before publishing
+an immutable release, record the exact commit and verify the generated archive
+contains the intended source and figures. Create a tag only when the authors
+and venue process call for one, and push it only after reviewing the tag and
+remote.
 
-If submitting a methodology paper to **CPC** (Computer Physics Communications):
+Do not invent a tag, commit, DOI, archive identifier, or acceptance status in
+the manuscript or release notes. A DOI is issued by an external archive or
+publisher only after the corresponding external action succeeds.
 
-### Step 5.1: University APC Waiver via CAUL
-- Corresponding author must use their official ANU email: `@anu.edu.au`.
-- Under the **CAUL Read & Publish Agreement** with Elsevier, Elsevier Hybrid Open Access journals (such as CPC) provide **100% APC waiver ($0 USD)** automatically during the Rights & Access form step upon acceptance.
+## 5. External submission steps
 
-### Step 5.2: Manuscript Preparation
-- The manuscript text is pre-drafted in `docs/CPC_METHODOLOGY.md`.
-- Vector publication figures are located in `docs/figures/`:
-  - `fig1_semantic_architecture.pdf`
-  - `fig2_mie_adjudication.pdf`
-  - `fig3_beam_propagation_anomaly.pdf`
-  - `fig4_performance_speedup.pdf`
-- Format into Elsevier's `elsarticle` LaTeX template if required.
+1. Choose the target venue and read its current author, software, data, and
+   AI-disclosure requirements.
+2. Submit the appropriate manuscript source and repository revision through
+   the venue's official system.
+3. Respond to editorial and reviewer requests using new, reviewable commits.
+4. After acceptance, follow the venue's instructions for the final tag,
+   archival deposit, metadata, and citation record.
+5. Report a DOI, publication state, or archive URL only after it is returned by
+   the external service and independently verified.
+
+Any APC waiver, institutional agreement, or open-access discount depends on
+the journal, article type, author affiliation, and policy in force at the time
+of submission. Confirm it with the publisher or institution; this repository
+cannot guarantee a zero-cost publication.
+
+## 6. Final release checklist
+
+- [ ] The exact submission revision is recorded.
+- [ ] All local validation gates pass on the submission revision.
+- [ ] The optional-engine status is archived with the generated data.
+- [ ] The manuscript PDF has been rendered and visually inspected page by
+      page.
+- [ ] Figures and tables agree with the current CSV data.
+- [ ] The license, author metadata, citations, and disclosures have been
+      checked by the authors.
+- [ ] External acceptance, DOI, and publication metadata are reported only
+      after confirmation from the relevant service.

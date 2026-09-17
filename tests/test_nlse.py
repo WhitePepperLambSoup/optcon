@@ -1,15 +1,18 @@
 """Tests for the Generalized Nonlinear Schrodinger Equation (G-NLSE) Split-Step Fourier Solver."""
 
 import math
+from typing import Any, cast
 
 import numpy as np
 import pytest
 
+from optcon import nlse as nlse_module
 from optcon import q
 from optcon.errors import DimensionError
 from optcon.nlse import (
     FiberParameters,
     Pulse,
+    _self_steepening_multiplier,
     gaussian_pulse,
     soliton_parameters,
     soliton_pulse,
@@ -39,6 +42,23 @@ def test_pulse_dimension_validation():
             wavelength=q(1550.0, "nm"),
         )
 
+
+@pytest.mark.parametrize(
+    ("time_step", "wavelength"),
+    [(q(0.0, "fs"), q(1550.0, "nm")), (q(-1.0, "fs"), q(1550.0, "nm")), (q(1.0, "fs"), q(0.0, "nm"))],
+)
+def test_pulse_rejects_nonpositive_grid_parameters(time_step, wavelength):
+    with pytest.raises(ValueError, match="strictly positive"):
+        Pulse(np.ones(16), time_step, wavelength)
+
+
+def test_pulse_rejects_nonfinite_amplitudes():
+    amplitude = np.ones(16, dtype=complex)
+    amplitude[3] = np.nan
+
+    with pytest.raises(ValueError, match="finite"):
+        Pulse(amplitude, q(1.0, "fs"), q(1550.0, "nm"))
+
     # Pass time where power expected
     with pytest.raises(DimensionError):
         gaussian_pulse(
@@ -46,6 +66,100 @@ def test_pulse_dimension_validation():
             fwhm_duration=q(100.0, "fs"),
             wavelength=q(1550.0, "nm"),
         )
+
+
+@pytest.mark.parametrize(
+    "parameters",
+    [
+        {"beta2": q(float("nan"), "ps^2/km"), "gamma": q(2.0, "1/(W*km)")},
+        {"beta2": q(-20.0, "ps^2/km"), "gamma": q(float("inf"), "1/(W*km)")},
+        {
+            "beta2": q(-20.0, "ps^2/km"),
+            "gamma": q(2.0, "1/(W*km)"),
+            "beta3": q(float("nan"), "ps^3/km"),
+        },
+        {
+            "beta2": q(-20.0, "ps^2/km"),
+            "gamma": q(2.0, "1/(W*km)"),
+            "beta4": q(float("inf"), "ps^4/km"),
+        },
+        {
+            "beta2": q(-20.0, "ps^2/km"),
+            "gamma": q(2.0, "1/(W*km)"),
+            "loss": q(float("nan"), "1/m"),
+        },
+    ],
+)
+def test_fiber_parameters_reject_nonfinite_coefficients(parameters):
+    with pytest.raises(ValueError, match="finite"):
+        FiberParameters(**parameters)
+
+
+def test_fiber_parameters_reject_negative_attenuation():
+    with pytest.raises(ValueError, match="loss must be non-negative"):
+        FiberParameters(
+            beta2=q(-20.0, "ps^2/km"),
+            gamma=q(2.0, "1/(W*km)"),
+            loss=q(-1.0, "1/m"),
+        )
+
+
+def test_soliton_parameters_reject_invalid_finite_inputs():
+    with pytest.raises(ValueError, match="pulse_duration must be strictly positive"):
+        soliton_parameters(
+            q(1550.0, "nm"), q(0.0, "ps"), q(-20.0, "ps^2/km"), q(2.0, "1/(W*km)")
+        )
+    with pytest.raises(ValueError, match="gamma must be finite"):
+        soliton_parameters(
+            q(1550.0, "nm"),
+            q(1.0, "ps"),
+            q(-20.0, "ps^2/km"),
+            q(float("nan"), "1/(W*km)"),
+        )
+
+
+@pytest.mark.parametrize("builder", [soliton_pulse, gaussian_pulse])
+def test_pulse_builders_reject_fractional_sample_counts(builder):
+    duration_name = "duration" if builder is soliton_pulse else "fwhm_duration"
+    arguments = {
+        "peak_power": q(1.0, "W"),
+        duration_name: q(1.0, "ps"),
+        "wavelength": q(1550.0, "nm"),
+        "samples": 16.5,
+    }
+    with pytest.raises(ValueError, match="samples must be an integer"):
+        builder(**arguments)
+
+
+@pytest.mark.parametrize("builder", [soliton_pulse, gaussian_pulse])
+def test_pulse_builders_reject_negative_peak_power(builder):
+    duration_name = "duration" if builder is soliton_pulse else "fwhm_duration"
+    arguments = {
+        "peak_power": q(-1.0, "W"),
+        duration_name: q(1.0, "ps"),
+        "wavelength": q(1550.0, "nm"),
+        "samples": 16,
+    }
+    with pytest.raises(ValueError, match="peak_power must be strictly positive"):
+        builder(**arguments)
+
+
+def test_nlse_helpers_reject_nonfinite_grid_parameters():
+    with pytest.raises(ValueError, match="dt must be finite and strictly positive"):
+        nlse_module._causal_raman_convolution(
+            np.ones(2), np.ones(2), float("nan")
+        )
+    with pytest.raises(ValueError, match="carrier frequency must be finite and strictly positive"):
+        _self_steepening_multiplier(np.ones(2), float("nan"))
+
+
+def test_solve_nlse_rejects_invalid_distance_and_step_count():
+    pulse = gaussian_pulse(q(1.0, "W"), q(1.0, "ps"), q(1550.0, "nm"), samples=16)
+    fiber = FiberParameters(q(-20.0, "ps^2/km"), q(2.0, "1/(W*km)"))
+    with pytest.raises(ValueError, match="distance must be finite"):
+        solve_nlse(pulse, fiber, q(float("nan"), "m"), steps=1)
+    with pytest.raises(ValueError, match="steps must be an integer"):
+        solve_nlse(pulse, fiber, q(1.0, "m"), steps=cast(Any, 1.5))
 
 
 def test_soliton_parameters_and_balance():
@@ -101,7 +215,7 @@ def test_fundamental_soliton_propagation():
         pulse_in, fiber, distance=z0, steps=100, check_energy=True
     )
 
-    # 1. Energy conservation: lossless SSFM preserves pulse energy to machine precision
+    # 1. Energy conservation: the conservative SSFM case preserves pulse energy to numerical precision
     e_in = pulse_in.energy.to_value("pJ")
     e_out = pulse_out.energy.to_value("pJ")
     assert abs(e_out - e_in) / e_in < 1e-11
@@ -214,6 +328,34 @@ def test_higher_order_dispersion_and_symmetry_breaking():
     )
 
 
+def test_third_order_dispersion_uses_the_documented_fft_sign_convention():
+    samples = 64
+    pulse = Pulse(
+        amplitude=np.exp(-0.5 * (np.linspace(-3.0, 3.0, samples) ** 2)).astype(complex),
+        time_step=q(5.0, "fs"),
+        wavelength=q(1550.0, "nm"),
+    )
+    beta3 = q(0.2, "ps^3/km")
+    distance = q(25.0, "m")
+    fiber = FiberParameters(
+        beta2=q(0.0, "ps^2/km"),
+        beta3=beta3,
+        gamma=q(0.0, "1/(W*km)"),
+    )
+
+    propagated, _ = solve_nlse(pulse, fiber, distance=distance, steps=1)
+
+    omega = pulse.angular_frequencies
+    beta3_si = beta3.to_value("s^3/m")
+    distance_m = distance.to_value("m")
+    expected_spectrum = np.fft.fft(pulse.amplitude) * np.exp(
+        -1.0j * beta3_si * omega**3 * distance_m / 6.0
+    )
+    expected = np.fft.ifft(expected_spectrum)
+
+    assert propagated.amplitude == pytest.approx(expected, rel=1e-12, abs=1e-12)
+
+
 def test_lossy_fiber_attenuation():
     # Linear attenuation: energy drops exponentially E(z) = E0 * exp(-alpha * z)
     pulse_in = gaussian_pulse(
@@ -273,3 +415,71 @@ def test_raman_self_frequency_redshift():
     # Raman self-frequency shift: in envelope representation E = Re[A * exp(-i omega0 t)],
     # an optical redshift (omega < omega0) corresponds to positive envelope frequency shift
     assert c_raman > c_no_raman + 1e11
+
+
+def test_raman_convolution_is_causal_linear_and_matches_direct_sum():
+    power = np.array([1.0, 2.0, 3.0, 4.0])
+    response = np.array([0.0, 0.5, 0.25])
+    dt = 0.2
+
+    actual = nlse_module._causal_raman_convolution(power, response, dt)
+    expected = np.convolve(power, response, mode="full")[: power.size] * dt
+
+    assert np.allclose(actual, expected)
+
+    # A response generated at the end of the finite window must not wrap into
+    # the beginning as it would under circular convolution.
+    late_impulse = np.array([0.0, 0.0, 0.0, 1.0])
+    late_output = nlse_module._causal_raman_convolution(late_impulse, response, dt)
+    assert np.allclose(late_output[:3], 0.0)
+
+
+def test_self_steepening_fourier_multiplier_matches_derivative_convention():
+    omega0 = 2.0e15
+    omega = np.array([-0.5e15, 0.0, 0.5e15])
+    assert _self_steepening_multiplier(omega, omega0) == pytest.approx(
+        np.array([1.25, 1.0, 0.75])
+    )
+
+
+def test_self_steepening_substep_converges_with_longitudinal_refinement():
+    pulse = gaussian_pulse(
+        peak_power=q(10.0, "W"),
+        fwhm_duration=q(200.0, "fs"),
+        wavelength=q(1550.0, "nm"),
+        samples=128,
+        time_window=q(2.0, "ps"),
+    )
+    fiber = FiberParameters(
+        beta2=q(0.0, "ps^2/km"),
+        gamma=q(10.0, "1/(W*km)"),
+        self_steepening=True,
+    )
+    distance = q(10.0, "m")
+    coarse, _ = solve_nlse(pulse, fiber, distance, steps=8, check_energy=True)
+    medium, _ = solve_nlse(pulse, fiber, distance, steps=16, check_energy=True)
+    fine, _ = solve_nlse(pulse, fiber, distance, steps=32, check_energy=True)
+
+    medium_error = np.linalg.norm(medium.amplitude - fine.amplitude)
+    coarse_error = np.linalg.norm(coarse.amplitude - fine.amplitude)
+    assert medium_error < 0.35 * coarse_error
+
+
+def test_full_lossless_raman_and_self_steepening_track_energy():
+    pulse = gaussian_pulse(
+        peak_power=q(5.0, "W"),
+        fwhm_duration=q(200.0, "fs"),
+        wavelength=q(1550.0, "nm"),
+        samples=128,
+        time_window=q(2.0, "ps"),
+    )
+    fiber = FiberParameters(
+        beta2=q(-20.0, "ps^2/km"),
+        gamma=q(2.0, "1/(W*km)"),
+        raman_fraction=0.18,
+        self_steepening=True,
+    )
+    _, energy_history = solve_nlse(
+        pulse, fiber, distance=q(1.0, "m"), steps=16, check_energy=True
+    )
+    assert max(abs(value - 1.0) for value in energy_history) < 1e-4

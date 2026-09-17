@@ -10,10 +10,13 @@ Run:  python -m optcon.benchmarks.bench
 
 from __future__ import annotations
 
+import csv
 import gc
+import platform
 import time
 import tracemalloc
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -29,6 +32,9 @@ SAMPLES = 512
 WAIST_UM = 50.0
 LAMBDA_NM = 633.0
 EXTENT_UM = 1600.0
+BENCHMARK_DATA_PATH = (
+    Path(__file__).resolve().parents[1] / "docs" / "data" / "benchmark_operations.csv"
+)
 
 
 def measure(operation: Callable[[], Any], repeats: int = 3) -> tuple[float, float]:
@@ -49,6 +55,22 @@ def measure(operation: Callable[[], Any], repeats: int = 3) -> tuple[float, floa
     return best, peak / 1024**2
 
 
+def write_results(
+    results: list[tuple[str, float, float]], output_path: str | Path = BENCHMARK_DATA_PATH
+) -> Path:
+    """Write benchmark measurements and environment provenance to CSV."""
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    python_version = platform.python_version()
+    platform_name = platform.platform()
+    with path.open("w", newline="", encoding="utf-8") as stream:
+        writer = csv.writer(stream)
+        writer.writerow(["operation", "best_seconds", "peak_mib", "python", "platform"])
+        for name, seconds, peak_mib in results:
+            writer.writerow([name, seconds, peak_mib, python_version, platform_name])
+    return path
+
+
 def build_field(samples: int = SAMPLES) -> Field:
     return gaussian_field(
         waist=q(WAIST_UM, "um"),
@@ -56,6 +78,36 @@ def build_field(samples: int = SAMPLES) -> Field:
         samples=samples,
         extent=q(EXTENT_UM, "um"),
     )
+
+
+def naive_decompose(
+    field: Field, waist: Any, max_order: int = 3, *, radius_of_curvature: Any = None
+) -> dict[tuple[int, int], complex]:
+    """Reference implementation that materialises one 2-D mode per pair.
+
+    This deliberately straightforward implementation is used only as a
+    benchmark baseline.  It shares the public basis function with the
+    separable implementation, so the timing comparison does not also compare
+    different mathematical definitions of the modes.
+    """
+    axis = field.coordinates
+    grid_x, grid_y = np.meshgrid(axis, axis)
+    coefficients: dict[tuple[int, int], complex] = {}
+    for m in range(max_order + 1):
+        for n in range(max_order + 1):
+            mode = hermite_gauss(
+                grid_x,
+                grid_y,
+                m,
+                n,
+                waist,
+                radius_of_curvature=radius_of_curvature,
+                wavelength=field.wavelength,
+            )
+            coefficients[(m, n)] = complex(
+                np.sum(np.conj(mode) * field.amplitude) * field.spacing.value**2
+            )
+    return coefficients
 
 
 def main() -> int:
@@ -84,13 +136,17 @@ def main() -> int:
             lambda: decompose(field, waist=q(WAIST_UM, "um"), max_order=3),
         ),
         (
+            "naive decompose 512^2 to order 3",
+            lambda: naive_decompose(field, waist=q(WAIST_UM, "um"), max_order=3),
+        ),
+        (
             "hermite_gauss 512^2 single mode",
             lambda: hermite_gauss(grid_x, grid_y, 2, 1, q(WAIST_UM, "um")),
         ),
-            (
-                "mtf from a 512^2 psf",
-                lambda: mtf_from_psf(psf, q(EXTENT_UM / SAMPLES, "um")),
-            ),
+        (
+            "mtf from a 512^2 psf",
+            lambda: mtf_from_psf(psf, q(EXTENT_UM / SAMPLES, "um")),
+        ),
     ]
     coefficients = decompose(field, waist=q(WAIST_UM, "um"), max_order=3)
     cases.extend(
@@ -111,9 +167,13 @@ def main() -> int:
     header = f"{'operation':44s} {'best s':>9s} {'peak MiB':>9s}"
     print(header)
     print("-" * len(header))
+    results: list[tuple[str, float, float]] = []
     for name, operation in cases:
         seconds, peak = measure(operation)
+        results.append((name, seconds, peak))
         print(f"{name:44s} {seconds:9.4f} {peak:9.1f}")
+    output_path = write_results(results)
+    print(f"\nWrote raw benchmark data to {output_path}")
     return 0
 
 

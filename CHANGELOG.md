@@ -6,32 +6,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-09-17
+
 ### Added
 
-- `modes` now supports explicit `basis="laguerre"` decomposition, content
-  reporting, and reconstruction for signed-charge Laguerre-Gauss `(p, ell)`
-  modes, with validation that prevents negative-index aliasing.
-- Experiment 05 now returns computed angular and thermal 90% coupling
-  thresholds and builds its 2-D map from the same ABCD-derived sweep.
-- `benchmarks.engine_status` reports optional engines as PASS, SKIP, or FAIL,
-  with a strict Tier-1 CI gate.
-- Reproducibility examples and benchmarks are included in the wheel.
+- A correctness-matched naive two-dimensional modal-decomposition baseline and regression tests for the benchmark comparison.
+- Figure data provenance for availability-sensitive external-engine measurements.
+- Separate one-way and round-trip Fox-Li loss fields.
+- Regression coverage for negative amplitude orders, keyword-only checked arguments, complex adjoints, engine import errors, and G-NLSE self-steepening.
 
 ### Changed
 
-- Modal decomposition and reconstruction now use the separability of the
-  Hermite-Gauss basis instead of materialising one grid per mode: 460x faster
-  and 160x less peak memory at 512^2, order 3.
-- Propagation builds its transfer function from separable phase factors and
-  broadcasting rather than a meshgrid, cutting peak memory by 18-25% and
-  Fresnel time by 1.5x.
-- FFTs moved from `numpy.fft` to `scipy.fft`, which runs the same pocketfft
-  algorithm 3.8x faster for these sizes: Fresnel propagation is now 3.7x
-  faster than it was and uses a third less memory.
-- `py.typed` marker and `CITATION.cff` added; `docs/PERFORMANCE.md` records the
-  measurements and the sampling regime of every propagator.
-- `docs/API.md`, generated from the docstrings, indexes 208 public functions
-  across 31 modules.
+- `Quantity.amp_order` now rejects negative integers; division and negative powers raise `AmplitudeOrderError` when they would create a negative order.
+- `@checked` now updates `inspect.BoundArguments` in place and calls the wrapped function with `bound.args` and `bound.kwargs`, preserving positional, keyword-only, and variadic binding semantics.
+- Complex adjoint checks use the Hermitian inner product via `numpy.vdot`.
+- The G-NLSE nonlinear path uses fourth-order Runge-Kutta for Raman and self-steepening terms and the corrected Fourier multiplier for the configured FFT convention.
+- Engine status distinguishes `ready`, `missing`, and import `error`.
+- Figure generation measures available engines at runtime, exports raw CSV data, and withholds curves for unavailable optional dependencies.
+- The modal benchmark reports machine-specific best-of-three measurements and writes exact results with environment provenance to `docs/data/benchmark_operations.csv`. The current recorded run measured 0.0006535 s for the separable path and 0.2784134 s for the naive baseline, a ratio of approximately `4.26e2`. Solver discretization data are also exported to `docs/data/solver_convergence.csv`.
+- Manuscript and documentation claims now distinguish current measurements, optional experiments, and engine-registry metadata from completed numerical comparisons.
 
 ## [0.1.0]
 
@@ -110,28 +103,28 @@ First cut. The API is usable but not frozen.
   `optcon_reference` (Mie) and `optcon_beam_reference` (closed-form Gaussian).
 - `engines/differential.py` - cross-engine differential testing
   (`compare_across_engines`, `assert_engines_agree`).
-- Five experiments in `examples/` covering guard quality, cross-engine
-  agreement, Mie adjudication and beam-propagation adjudication.
+- Five runnable experiments in `examples/` covering guard quality, cross-engine
+  comparisons, Mie and beam adjudication, and cavity/thermal tolerance.
 - Packaging and project infrastructure: `pyproject.toml`, `LICENSE`, `CI`,
   `CONTRIBUTING.md`, `docs/DESIGN.md`.
 
-### Findings
+### Historical and optional findings
 
-- `PyMieScatt.MieQ` defaults to `nMedium=1.00027316` (air) and silently scales
-  the refractive index by it, shifting `Qext` by ~0.15% relative to the
-  vacuum convention used by `miepython` and by the textbook series. Stating
-  the medium explicitly brings all three implementations to agreement at the
-  level of 1e-13.
-- LightPipes' `Fresnel` (convolution) propagator returns a Gaussian beam
-  radius 2-7% wider than the closed-form `w(z)`, while `Forvard` (spectral)
-  matches it to 2e-6. The offset does not shrink with sampling.
+- The PyMieScatt default-medium experiment is retained as a conditional
+  characterization in `examples/experiment_03_mie_adjudication.py`. It is not
+  counted as current evidence when its optional dependencies are unavailable.
+- In the current stated finite-window configuration, LightPipes' convolution
+  propagator produces a wider Gaussian radius than the closed form, while the
+  spectral propagator tracks the closed form closely. Exact values and engine
+  provenance are recorded in `docs/data/fig3_beam_resolution.csv` and
+  `docs/data/fig4_provenance.csv`.
 
-### Verified against
+### Validation coverage
 
-- `tmm_core` for the Fresnel interface coefficients, to 1e-12
-- `tmm_core` for a single-layer coating, to 1e-12
-- `tmm_fast` against `tmm_core` across wavelengths and angles, to 4e-08
-- closed-form Gaussian beam propagation, to 2e-6
-- an independently written Mie series, to 1e-13 once the medium is stated
-- cavity spot sizes from the `g`-parameter formulas against the ABCD
-  eigenmode, to 1e-9
+- Current measured comparisons, their tolerances, and environment provenance
+  are generated into `docs/data/`.
+- Optional third-party comparisons run only when their dependencies import and
+  a convention-matched observable is available.
+- Closed-form and internal cross-route checks remain in the test suite and
+  should be interpreted from the current test assertions, not historical
+  machine-specific values in this changelog.

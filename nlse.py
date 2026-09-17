@@ -2,7 +2,7 @@
 
 Solves pulse propagation in nonlinear dispersive optical waveguides and fibers:
 
-    \\frac{\\partial A}{\\partial z} = \\hat{D} A + \\hat{N}(A) A
+    \\frac{\\partial A}{\\partial z} = \\mathcal{D}[A] + \\mathcal{N}[A]
 
 following Agrawal, *Nonlinear Fiber Optics* (5th ed., 2013), ch. 2-3.
 
@@ -10,17 +10,22 @@ The linear dispersion operator \\hat{D} accounts for attenuation and arbitrary
 orders of dispersion:
 
     \\tilde{D}(\\Omega) = -\\frac{\\alpha}{2} + i \\left( \\frac{\\beta_2}{2} \\Omega^2
-        + \\frac{\\beta_3}{6} \\Omega^3 + \\frac{\\beta_4}{24} \\Omega^4 \\right)
+        - \\frac{\\beta_3}{6} \\Omega^3 + \\frac{\\beta_4}{24} \\Omega^4 \\right)
 
-The nonlinear operator \\hat{N}(A) includes Kerr self-phase modulation (SPM),
+The nonlinear operator \\mathcal{N}[A] includes Kerr self-phase modulation (SPM),
 self-steepening (optical shock), and the Raman delayed response:
 
-    \\hat{N}(A) = i \\gamma \\left( 1 + \\frac{i}{\\omega_0} \\frac{\\partial}{\\partial T} \\right)
-                  \\left[ (1 - f_R) |A|^2 + f_R \\int_0^\\infty h_R(s) |A(T - s)|^2 ds \\right]
+    \\mathcal{N}[A] = i \\gamma \\left( 1 + \\frac{i}{\\omega_0}
+                  \\frac{\\partial}{\\partial T} \\right)
+                  \\left\\{ A \\left[ (1 - f_R) |A|^2
+                  + f_R \\int_0^\\infty h_R(s) |A(T - s)|^2 ds \\right] \\right\\}
 
 Numerical Scheme:
-    Second-order symmetric Split-Step Fourier Method (SSFM), with global
-    accuracy O(dz^2) and exact energy conservation in the lossless regime (alpha = 0).
+    Second-order symmetric Split-Step Fourier Method (SSFM).  The pure SPM
+    substep is evaluated analytically; Raman and self-steepening substeps use
+    fourth-order Runge-Kutta integration.  The delayed response uses a
+    zero-padded causal convolution on the finite temporal window.  Lossless
+    energy is monitored rather than assumed.
 """
 
 from __future__ import annotations
@@ -31,6 +36,7 @@ from typing import Any
 
 import numpy as np
 import scipy.fft as _fft
+from scipy.signal import fftconvolve as _fftconvolve
 
 from .errors import ContractViolation, DimensionError
 from .quantity import Quantity
@@ -53,7 +59,10 @@ def _length_of(value: Any, context: str) -> float:
     if isinstance(value, Quantity):
         if value.unit.dimension != _LENGTH:
             raise DimensionError(f"{context}: expected a length, got {value.unit}")
-        return float(value.to_value("m"))
+        scalar = float(value.to_value("m"))
+        if not math.isfinite(scalar):
+            raise ValueError(f"{context} must be finite, got {value}")
+        return scalar
     raise TypeError(f"{context}: expected a Quantity with length units, got {type(value).__name__}")
 
 
@@ -61,7 +70,10 @@ def _time_of(value: Any, context: str) -> float:
     if isinstance(value, Quantity):
         if value.unit.dimension != _TIME:
             raise DimensionError(f"{context}: expected a time duration, got {value.unit}")
-        return float(value.to_value("s"))
+        scalar = float(value.to_value("s"))
+        if not math.isfinite(scalar):
+            raise ValueError(f"{context} must be finite, got {value}")
+        return scalar
     raise TypeError(f"{context}: expected a Quantity with time units, got {type(value).__name__}")
 
 
@@ -69,8 +81,20 @@ def _power_of(value: Any, context: str) -> float:
     if isinstance(value, Quantity):
         if value.unit.dimension != _POWER:
             raise DimensionError(f"{context}: expected power, got {value.unit}")
-        return float(value.to_value("W"))
+        scalar = float(value.to_value("W"))
+        if not math.isfinite(scalar):
+            raise ValueError(f"{context} must be finite, got {value}")
+        return scalar
     raise TypeError(f"{context}: expected a Quantity with power units, got {type(value).__name__}")
+
+
+def _integer_at_least(value: Any, name: str, minimum: int) -> int:
+    if isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, np.integer)):
+        raise ValueError(f"{name} must be an integer, got {value!r}")
+    integer = int(value)
+    if integer < minimum:
+        raise ValueError(f"{name} must be at least {minimum}, got {value!r}")
+    return integer
 
 
 @dataclass(frozen=True)
@@ -91,9 +115,19 @@ class Pulse:
             raise ValueError(f"Pulse amplitude must be a 1D array, got shape {arr.shape}")
         if len(arr) < 16:
             raise ValueError(f"Pulse grid must have at least 16 samples, got {len(arr)}")
+        if not np.isfinite(arr).all():
+            raise ValueError("Pulse amplitude must contain only finite values")
         object.__setattr__(self, "amplitude", arr)
-        _time_of(self.time_step, "Pulse.time_step")
-        _length_of(self.wavelength, "Pulse.wavelength")
+        time_step_s = _time_of(self.time_step, "Pulse.time_step")
+        wavelength_m = _length_of(self.wavelength, "Pulse.wavelength")
+        if not math.isfinite(time_step_s) or time_step_s <= 0.0:
+            raise ValueError(
+                f"Pulse.time_step must be finite and strictly positive, got {self.time_step}"
+            )
+        if not math.isfinite(wavelength_m) or wavelength_m <= 0.0:
+            raise ValueError(
+                f"Pulse.wavelength must be finite and strictly positive, got {self.wavelength}"
+            )
 
     @property
     def samples(self) -> int:
@@ -201,19 +235,34 @@ class FiberParameters:
     self_steepening: bool = False
 
     def __post_init__(self) -> None:
-        if self.beta2.unit.dimension != _DISPERSION_2:
-            raise DimensionError(f"beta2 must have dimension time^2/length, got {self.beta2.unit}")
-        if self.gamma.unit.dimension != _GAMMA_DIM:
-            raise DimensionError(
-                f"gamma must have dimension 1/(power*length), got {self.gamma.unit}"
-            )
-        if self.beta3 is not None and self.beta3.unit.dimension != _DISPERSION_3:
-            raise DimensionError(f"beta3 must have dimension time^3/length, got {self.beta3.unit}")
-        if self.beta4 is not None and self.beta4.unit.dimension != _DISPERSION_4:
-            raise DimensionError(f"beta4 must have dimension time^4/length, got {self.beta4.unit}")
-        if self.loss is not None and self.loss.unit.dimension != _ATTENUATION:
-            raise DimensionError(f"loss must have dimension 1/length, got {self.loss.unit}")
-        if not 0.0 <= self.raman_fraction <= 1.0:
+        parameters = (
+            ("beta2", self.beta2, _DISPERSION_2, "s^2/m", "time^2/length"),
+            ("gamma", self.gamma, _GAMMA_DIM, "1/(W*m)", "1/(power*length)"),
+            ("beta3", self.beta3, _DISPERSION_3, "s^3/m", "time^3/length"),
+            ("beta4", self.beta4, _DISPERSION_4, "s^4/m", "time^4/length"),
+            ("loss", self.loss, _ATTENUATION, "1/m", "1/length"),
+        )
+        values: dict[str, float] = {}
+        for name, value, dimension, target_unit, description in parameters:
+            if value is None:
+                continue
+            if not isinstance(value, Quantity):
+                raise TypeError(f"{name} must be a Quantity")
+            if value.unit.dimension != dimension:
+                raise DimensionError(
+                    f"{name} must have dimension {description}, got {value.unit}"
+                )
+            scalar = float(value.to_value(target_unit))
+            if not math.isfinite(scalar):
+                raise ValueError(f"{name} must be finite, got {value}")
+            values[name] = scalar
+        if values.get("loss", 0.0) < 0.0:
+            raise ValueError(f"loss must be non-negative, got {self.loss}")
+        try:
+            raman_fraction = float(self.raman_fraction)
+        except (TypeError, ValueError) as error:
+            raise TypeError("raman_fraction must be a real number") from error
+        if not math.isfinite(raman_fraction) or not 0.0 <= raman_fraction <= 1.0:
             raise ValueError(f"raman_fraction must be in [0, 1], got {self.raman_fraction}")
 
 
@@ -241,11 +290,18 @@ def soliton_parameters(
     dict[str, Quantity]
         Calculated dispersion_length, nonlinear_length, soliton_period, and peak_power.
     """
-    _length_of(wavelength, "soliton_parameters.wavelength")
+    wavelength_m = _length_of(wavelength, "soliton_parameters.wavelength")
     t0_s = _time_of(pulse_duration, "soliton_parameters.pulse_duration")
-    b2_si = float(beta2.to_value("s^2/m"))
-    gam_si = float(gamma.to_value("1/(W*m)"))
+    validated_fiber = FiberParameters(beta2=beta2, gamma=gamma)
+    b2_si = float(validated_fiber.beta2.to_value("s^2/m"))
+    gam_si = float(validated_fiber.gamma.to_value("1/(W*m)"))
 
+    if wavelength_m <= 0.0:
+        raise ValueError(f"wavelength must be strictly positive, got {wavelength}")
+    if t0_s <= 0.0:
+        raise ValueError(
+            f"pulse_duration must be strictly positive, got {pulse_duration}"
+        )
     if b2_si >= 0.0:
         raise ValueError(
             f"Bright solitons require anomalous dispersion (beta2 < 0), got {beta2}"
@@ -277,12 +333,21 @@ def soliton_pulse(
     """Create a fundamental hyperbolic secant soliton pulse A(T) = sqrt(P0) * sech(T / T0)."""
     p0 = _power_of(peak_power, "soliton_pulse.peak_power")
     t0 = _time_of(duration, "soliton_pulse.duration")
-    _length_of(wavelength, "soliton_pulse.wavelength")
+    wavelength_m = _length_of(wavelength, "soliton_pulse.wavelength")
+    samples = _integer_at_least(samples, "samples", 16)
+    if p0 <= 0.0:
+        raise ValueError(f"peak_power must be strictly positive, got {peak_power}")
+    if t0 <= 0.0:
+        raise ValueError(f"duration must be strictly positive, got {duration}")
+    if wavelength_m <= 0.0:
+        raise ValueError(f"wavelength must be strictly positive, got {wavelength}")
 
     if time_window is None:
         t_win = 20.0 * t0
     else:
         t_win = _time_of(time_window, "soliton_pulse.time_window")
+    if t_win <= 0.0:
+        raise ValueError(f"time_window must be strictly positive, got {time_window}")
 
     dt = t_win / samples
     t_axis = (np.arange(samples) - samples // 2) * dt
@@ -309,13 +374,24 @@ def gaussian_pulse(
     """Create a transform-limited Gaussian pulse A(T) = sqrt(P0) * exp(-T^2 / (2 T0^2))."""
     p0 = _power_of(peak_power, "gaussian_pulse.peak_power")
     fwhm = _time_of(fwhm_duration, "gaussian_pulse.fwhm_duration")
-    _length_of(wavelength, "gaussian_pulse.wavelength")
+    wavelength_m = _length_of(wavelength, "gaussian_pulse.wavelength")
+    samples = _integer_at_least(samples, "samples", 16)
+    if p0 <= 0.0:
+        raise ValueError(f"peak_power must be strictly positive, got {peak_power}")
+    if fwhm <= 0.0:
+        raise ValueError(
+            f"fwhm_duration must be strictly positive, got {fwhm_duration}"
+        )
+    if wavelength_m <= 0.0:
+        raise ValueError(f"wavelength must be strictly positive, got {wavelength}")
 
     t0 = fwhm / (2.0 * math.sqrt(math.log(2.0)))
     if time_window is None:
         t_win = 10.0 * fwhm
     else:
         t_win = _time_of(time_window, "gaussian_pulse.time_window")
+    if t_win <= 0.0:
+        raise ValueError(f"time_window must be strictly positive, got {time_window}")
 
     dt = t_win / samples
     t_axis = (np.arange(samples) - samples // 2) * dt
@@ -342,6 +418,42 @@ def _raman_response(samples: int, dt: float) -> np.ndarray:
     if norm > 0.0:
         h_r = h_r / norm
     return h_r
+
+
+def _causal_raman_convolution(
+    power: np.ndarray,
+    response: np.ndarray,
+    dt: float,
+) -> np.ndarray:
+    """Evaluate a finite-window causal Raman convolution.
+
+    The temporal samples represent an ordered finite window, so the delayed
+    response must not wrap from the end of the array back to its beginning.
+    Zero-padding through a full linear convolution enforces that boundary
+    convention; only samples available in the current window are returned.
+    """
+    power_array = np.asarray(power, dtype=float)
+    response_array = np.asarray(response, dtype=float)
+    if power_array.ndim != 1 or response_array.ndim != 1:
+        raise ValueError("power and response must be one-dimensional arrays")
+    if power_array.size == 0 or response_array.size == 0:
+        return np.zeros(power_array.size, dtype=float)
+    if not math.isfinite(dt) or dt <= 0.0:
+        raise ValueError(f"dt must be finite and strictly positive, got {dt}")
+    return _fftconvolve(power_array, response_array, mode="full")[: power_array.size] * dt
+
+
+def _self_steepening_multiplier(omega: np.ndarray, omega0: float) -> np.ndarray:
+    """Return the Fourier multiplier for ``1 + i/omega0 * d/dt``.
+
+    With the FFT convention used by :mod:`scipy.fft`, ``d/dt`` maps to
+    ``i*omega``.  Therefore the shock operator maps to ``1 - omega/omega0``.
+    """
+    if not math.isfinite(omega0) or omega0 <= 0.0:
+        raise ValueError(
+            f"carrier frequency must be finite and strictly positive, got {omega0}"
+        )
+    return 1.0 - omega / omega0
 
 
 def solve_nlse(
@@ -376,8 +488,7 @@ def solve_nlse(
     total_z = _length_of(distance, "solve_nlse.distance")
     if total_z <= 0.0:
         raise ValueError(f"Propagation distance must be positive, got {distance}")
-    if steps < 1:
-        raise ValueError(f"Steps must be at least 1, got {steps}")
+    steps = _integer_at_least(steps, "steps", 1)
 
     dz = total_z / steps
     omega = pulse.angular_frequencies
@@ -393,7 +504,7 @@ def solve_nlse(
     # Dispersion operator D(Omega)
     dispersion = (
         0.5 * beta2_si * omega**2
-        + (beta3_si / 6.0) * omega**3
+        - (beta3_si / 6.0) * omega**3
         + (beta4_si / 24.0) * omega**4
     )
     d_half = np.exp((-0.5 * alpha_si + 1.0j * dispersion) * (0.5 * dz))
@@ -403,7 +514,8 @@ def solve_nlse(
     f_r = fiber.raman_fraction
     if use_raman:
         h_r = _raman_response(pulse.samples, pulse.time_step_s)
-        h_r_fft = _fft.fft(h_r)
+
+    shock_multiplier = _self_steepening_multiplier(omega, omega0)
 
     # Initial field and energy
     a = pulse.amplitude.copy()
@@ -413,29 +525,60 @@ def solve_nlse(
 
     energy_history: list[float] = [1.0]
 
+    def nonlinear_rhs(field: np.ndarray) -> np.ndarray:
+        """Evaluate the nonlinear G-NLSE right-hand side at one field state."""
+        power = np.abs(field) ** 2
+        if use_raman:
+            # Use zero-padded linear convolution so delayed response cannot
+            # wrap around the finite temporal window.
+            conv_raman = _causal_raman_convolution(
+                power, h_r, pulse.time_step_s
+            )
+            n_term = (1.0 - f_r) * power + f_r * conv_raman
+        else:
+            n_term = power
+
+        nonlinear_field = n_term * field
+        if fiber.self_steepening:
+            nonlinear_field = _fft.ifft(
+                shock_multiplier * _fft.fft(nonlinear_field)
+            )
+        return 1.0j * gamma_si * nonlinear_field
+
+    def nonlinear_step(field: np.ndarray) -> np.ndarray:
+        """Advance the nonlinear substep by one longitudinal step."""
+        if not (use_raman or fiber.self_steepening):
+            # For instantaneous SPM the intensity is invariant during the
+            # substep, so the exponential is exact and avoids unnecessary
+            # roundoff from numerical ODE integration.
+            return field * np.exp(1.0j * gamma_si * np.abs(field) ** 2 * dz)
+
+        # RK4 has a bounded stability region on the imaginary axis.  Keep
+        # each explicit nonlinear substep below a conservative phase limit,
+        # including the largest shock multiplier, so a caller's longitudinal
+        # step count does not silently turn into an unstable integration.
+        max_power = float(np.max(np.abs(field) ** 2))
+        max_multiplier = (
+            float(np.max(np.abs(shock_multiplier))) if fiber.self_steepening else 1.0
+        )
+        phase_estimate = abs(gamma_si) * max_power * dz * max_multiplier
+        substeps = max(1, int(math.ceil(phase_estimate / 1.5)))
+        sub_dz = dz / substeps
+        result = field
+        for _ in range(substeps):
+            k1 = nonlinear_rhs(result)
+            k2 = nonlinear_rhs(result + 0.5 * sub_dz * k1)
+            k3 = nonlinear_rhs(result + 0.5 * sub_dz * k2)
+            k4 = nonlinear_rhs(result + sub_dz * k3)
+            result = result + (sub_dz / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
+        return result
+
     for step in range(steps):
         # 1. First half-step dispersion
         a = _fft.ifft(d_half * _fft.fft(a))
 
         # 2. Full-step nonlinearity
-        power = np.abs(a) ** 2
-        if use_raman:
-            # Convolution: IFFT(FFT(h_R) * FFT(|A|^2)) * dt
-            conv_raman = _fft.ifft(h_r_fft * _fft.fft(power)).real * pulse.time_step_s
-            n_term = (1.0 - f_r) * power + f_r * conv_raman
-        else:
-            n_term = power
-
-        if fiber.self_steepening:
-            # Shock derivative (1 + i/omega0 d/dt)
-            a_mod = n_term * a
-            a_mod_f = _fft.fft(a_mod)
-            shock_factor = 1.0 + (omega / omega0)
-            nl_field = 1.0j * gamma_si * _fft.ifft(shock_factor * a_mod_f)
-            a = a + nl_field * dz
-        else:
-            nl_phase = gamma_si * n_term * dz
-            a = a * np.exp(1.0j * nl_phase)
+        a = nonlinear_step(a)
 
         # 3. Second half-step dispersion
         a = _fft.ifft(d_half * _fft.fft(a))
@@ -445,8 +588,8 @@ def solve_nlse(
         rel_energy = current_energy / e0
         energy_history.append(rel_energy)
 
-        if check_energy and alpha_si == 0.0 and not fiber.self_steepening:
-            # Lossless propagation strictly preserves L2 energy norm
+        if check_energy and alpha_si == 0.0:
+            # Lossless G-NLSE propagation preserves the envelope L2 norm.
             if abs(rel_energy - 1.0) > 1e-4:
                 raise ContractViolation(
                     f"Energy conservation violated at step {step}: "

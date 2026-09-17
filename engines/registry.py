@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import importlib
 import os
+import re
 import sys
 from dataclasses import dataclass
 from functools import lru_cache
@@ -42,6 +43,8 @@ class EngineSpec:
     angle_unit: str
     takes_polarization: bool
     summary: str
+    required_imports: tuple[str, ...] = ()
+    dependency_imports: tuple[str, ...] = ()
 
 
 ENGINE_SPECS: dict[str, EngineSpec] = {
@@ -66,6 +69,7 @@ ENGINE_SPECS: dict[str, EngineSpec] = {
         length_unit="m",
         angle_unit="rad",
         takes_polarization=True,
+        dependency_imports=("torch",),
         summary=(
             "vectorised differentiable TMM (numpy or torch); SI metres + radians; "
             "batched arrays only, one call handles many stacks"
@@ -89,6 +93,7 @@ ENGINE_SPECS: dict[str, EngineSpec] = {
         length_unit="nm",
         angle_unit="rad",
         takes_polarization=False,
+        dependency_imports=("shapely",),
         summary="Mie efficiencies with signature (m, wavelength, diameter)",
     ),
     "optcon_reference": EngineSpec(
@@ -141,10 +146,12 @@ ENGINE_SPECS: dict[str, EngineSpec] = {
         name="diffractio",
         domain="beam",
         module="diffractio",
+        required_imports=("diffractio", "diffractio.scalar_fields_XY"),
         project_path="optical_simulation_projects/diffractio",
         length_unit="um",
         angle_unit="rad",
         takes_polarization=False,
+        dependency_imports=("psutil",),
         summary=(
             "scalar/vector diffraction; ships its own unit constants "
             "(um=1.0, nm=0.001, mm=1000.0), so its internal base is the micron. "
@@ -160,6 +167,7 @@ ENGINE_SPECS: dict[str, EngineSpec] = {
         length_unit="um",
         angle_unit="rad",
         takes_polarization=False,
+        dependency_imports=("yaml",),
         summary=(
             "Spencer-Murty sequential ray tracing; its RayGroup docstring "
             "states the wavelength is in microns"
@@ -183,6 +191,7 @@ ENGINE_SPECS: dict[str, EngineSpec] = {
         length_unit="mm",
         angle_unit="rad",
         takes_polarization=False,
+        dependency_imports=("numba",),
         summary=(
             "differentiable lens design with a paraxial solver; millimetre "
             "lens units, wavelengths in micrometres"
@@ -211,6 +220,7 @@ ENGINE_SPECS: dict[str, EngineSpec] = {
         length_unit="mm",
         angle_unit="rad",
         takes_polarization=False,
+        dependency_imports=("torch",),
         summary="end-to-end differentiable camera pipeline (PyTorch)",
     ),
     "poppy": EngineSpec(
@@ -221,6 +231,7 @@ ENGINE_SPECS: dict[str, EngineSpec] = {
         length_unit="m",
         angle_unit="rad",
         takes_polarization=False,
+        dependency_imports=("astropy",),
         summary=(
             "telescope PSF and physical-optics propagation; astropy units, "
             "so lengths cross the boundary as m and angles as rad or arcsec"
@@ -250,6 +261,7 @@ ENGINE_SPECS: dict[str, EngineSpec] = {
         length_unit="um",
         angle_unit="rad",
         takes_polarization=False,
+        dependency_imports=("numba",),
         summary=(
             "MZI mesh optical neural networks; ships an is_unitary helper "
             "that the checks module can be compared against"
@@ -263,6 +275,7 @@ ENGINE_SPECS: dict[str, EngineSpec] = {
         length_unit="m",
         angle_unit="rad",
         takes_polarization=True,
+        dependency_imports=("autograd",),
         summary=(
             "FDFD/FDTD with an autograd adjoint; metre grid units, and its "
             "jacobian can be verified with checks.assert_gradient_matches"
@@ -286,6 +299,7 @@ ENGINE_SPECS: dict[str, EngineSpec] = {
         length_unit="um",
         angle_unit="rad",
         takes_polarization=True,
+        dependency_imports=("pandas",),
         summary="aperiodic Fourier modal method (RCWA family) for gratings",
     ),
     "torchoptics": EngineSpec(
@@ -296,6 +310,7 @@ ENGINE_SPECS: dict[str, EngineSpec] = {
         length_unit="m",
         angle_unit="rad",
         takes_polarization=True,
+        dependency_imports=("torch",),
         summary=(
             "differentiable Fourier optics in PyTorch; the shallow clone is "
             "missing its generated _version module, so it is registered but "
@@ -357,18 +372,34 @@ def import_engine(name: str) -> tuple[bool, str]:
         if str(path) not in sys.path:
             sys.path.insert(0, str(path))
     _prepare_import_compatibility(name)
+    required_imports = spec.required_imports or (spec.module,)
     try:
-        importlib.import_module(spec.module)
+        for module_name in required_imports:
+            importlib.import_module(module_name)
     except Exception as error:  # noqa: BLE001 - reported, not swallowed
         return False, f"{type(error).__name__}: {error}"
     return True, ""
 
 
 def _is_missing_engine(spec: EngineSpec, message: str) -> bool:
-    """Return whether an import failure means the engine itself is absent."""
-    return message.startswith("ModuleNotFoundError") and (
-        f"No module named '{spec.module}'" in message
-        or f'No module named "{spec.module}"' in message
+    """Return whether an import failure is an unavailable optional input.
+
+    A package can be present while one of its optional or undeclared runtime
+    dependencies is absent.  The registry records the dependency roots that are
+    expected for surveyed engines so those cases remain explicit ``missing``
+    skips.  Any other import failure is deliberately kept as ``error``.
+    """
+    if not message.startswith("ModuleNotFoundError"):
+        return False
+    match = re.search(r"No module named ['\"]([^'\"]+)['\"]", message)
+    if match is None:
+        return False
+    missing_module = match.group(1)
+    required_imports = spec.required_imports or (spec.module,)
+    declared_modules = (*required_imports, *spec.dependency_imports)
+    return any(
+        missing_module == module_name or missing_module.startswith(f"{module_name}.")
+        for module_name in declared_modules
     )
 
 
