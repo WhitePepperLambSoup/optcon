@@ -29,11 +29,6 @@ Thumbs.db
 review_pdf/
 tmp/
 tmp_pytest/
-docs/superpowers/plans/
-docs/paper_cpc_reviewed.pdf
-docs/*_build.*
-docs/*_release.*
-docs/*_v2.*
 
 # Local research files
 /private-paper/
@@ -47,5 +42,4 @@ docs/*_v2.*
 /docs/generate_figures.py
 /docs/data/
 /docs/figures/
-/docs/superpowers/plans/
 /optcon-artifacts/
