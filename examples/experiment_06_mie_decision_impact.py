@@ -137,7 +137,9 @@ def run_decision_impact(output_path: str | Path) -> dict[str, Any]:
         observable="Qext threshold diameter",
         tolerance="maximum relative reference error <= 1e-6",
         diagnostic="matched Mie series and external-engine comparison",
-        evidence_source="optcon reference implementation and candidate engine",
+        evidence_source=(
+            "author-constructed Mie series and external candidate engine"
+        ),
         scope="homogeneous sphere in a declared water medium",
         requirements=requirements,
     )
