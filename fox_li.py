@@ -418,8 +418,8 @@ def fox_li_power_iteration(
     else:
         v = w_sqrt * np.sqrt(np.maximum(rho, 1e-12)) * u_init
 
-    v_norm = np.linalg.norm(v)
-    if not math.isfinite(float(v_norm)) or v_norm == 0.0:
+    v_norm = float(np.linalg.norm(v))
+    if not math.isfinite(v_norm) or v_norm == 0.0:
         raise ValueError("initial field cannot be identically zero")
     v = v / v_norm
 
