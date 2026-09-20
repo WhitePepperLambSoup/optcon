@@ -17,7 +17,8 @@ from optcon.engines import registry
     "command",
     [
         "from optcon.engines.registry import engine_status; "
-        "assert engine_status('tmm_core') == 'ready'",
+        "assert engine_status('tmm_core') == 'ready'; "
+        "import tmm_core; assert callable(tmm_core.coh_tmm)",
         "import math; from optcon import q; "
         "from optcon.engines import stack_response; "
         "result = stack_response(n_list=[1.0, 1.5], "

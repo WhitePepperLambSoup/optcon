@@ -373,7 +373,12 @@ def import_engine_module(name: str) -> ModuleType:
     except ModuleNotFoundError as error:
         if name != "tmm_core" or error.name != spec.module:
             raise
-        return importlib.import_module("tmm.tmm_core")
+        module = importlib.import_module("tmm.tmm_core")
+        # The installed ``tmm`` package exposes this module below its package,
+        # while the surveyed source layout exposes the historical top-level
+        # name. Keep both import paths valid for adapters and reproductions.
+        sys.modules.setdefault("tmm_core", module)
+        return module
 
 
 @lru_cache(maxsize=None)
