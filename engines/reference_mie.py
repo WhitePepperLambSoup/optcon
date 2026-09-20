@@ -1,9 +1,10 @@
-"""An independent Mie reference implementation.
+"""An author-constructed Mie-series reference implementation.
 
 Written straight from the standard Mie series (Bohren & Huffman, /Absorbing
 Scattering of Light by Small Particles/, ch. 4) using SciPy's Bessel and
-Hankel functions.  It shares no code path with the two libraries it is used
-to adjudicate, so when three implementations disagree this one breaks the tie.
+Hankel functions. It shares no code path with the external libraries it is
+used to compare, so it provides a matched same-tree reference calculation.
+It is not a third-party or independently developed reference implementation.
 
 It is intentionally simple and slow: it exists to settle arguments, not to
 run inside a training loop.

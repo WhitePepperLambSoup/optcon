@@ -29,6 +29,10 @@ Thumbs.db
 review_pdf/
 tmp/
 tmp_pytest/
+.pytest-tmp-*/
+dist-review/
+dist-review-*/
+dist-verify-*/
 
 # Local research files
 /private-paper/
@@ -40,6 +44,7 @@ tmp_pytest/
 /docs/CPC_METHODOLOGY.md
 /docs/LITERATURE_POSITIONING.md
 /docs/generate_figures.py
+/docs/project_explained.html
 /docs/data/
 /docs/figures/
 /optcon-artifacts/

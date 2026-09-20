@@ -1,4 +1,4 @@
-"""An independent Mie reference used to adjudicate the two engine libraries.
+"""An author-constructed Mie reference used to adjudicate the two engine libraries.
 
 The reference is deliberately written from the textbook formula rather than
 borrowed from either library, so that agreement (or disagreement) with it is
@@ -81,7 +81,7 @@ def test_reference_and_both_engines_agree_to_within_a_few_thousandths():
 
 
 def test_engines_agree_to_machine_precision_once_the_medium_is_explicit():
-    """PyMieScatt defaults to an air medium; stating it removes the gap."""
+    """A stated vacuum medium removes any upstream default convention."""
     kwargs: dict[str, Any] = dict(
         m=1.5 + 0.01j,
         diameter=q(200.0, "nm"),
@@ -96,20 +96,13 @@ def test_engines_agree_to_machine_precision_once_the_medium_is_explicit():
         assert value == pytest.approx(reference, rel=1e-11), engine
 
 
-@pytest.mark.skipif("PyMieScatt" not in available_engines("mie"), reason="PyMieScatt missing")
-def test_pymiescatt_library_default_is_an_air_medium_not_vacuum():
-    """Characterisation of upstream: the default silently changes the answer."""
-    import PyMieScatt
-
-    reference = mie_efficiencies_reference(1.5 + 0.01j, 200.0, 550.0)["Qext"]
-    default = float(
-        PyMieScatt.MieQ(1.5 + 0.01j, 550.0, 200.0, asDict=True)["Qext"]
-    )
-    vacuum = float(
-        PyMieScatt.MieQ(1.5 + 0.01j, 550.0, 200.0, nMedium=1.0, asDict=True)["Qext"]
-    )
-    assert vacuum == pytest.approx(reference, rel=1e-12)
-    assert 1e-4 < abs(default - reference) / reference < 1e-2
+def test_explicit_air_and_vacuum_queries_are_distinguishable():
+    """The convention check uses stated media, not a version-specific default."""
+    vacuum = mie_efficiencies_reference(1.5 + 0.01j, 200.0, 550.0, n_env=1.0)["Qext"]
+    air = mie_efficiencies_reference(
+        1.5 + 0.01j, 200.0, 550.0, n_env=1.00027316
+    )["Qext"]
+    assert 1e-4 < abs(air - vacuum) / vacuum < 1e-2
 
 
 def test_a_real_medium_is_honoured_by_every_engine():

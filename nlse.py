@@ -24,8 +24,10 @@ Numerical Scheme:
     Second-order symmetric Split-Step Fourier Method (SSFM).  The pure SPM
     substep is evaluated analytically; Raman and self-steepening substeps use
     fourth-order Runge-Kutta integration.  The delayed response uses a
-    zero-padded causal convolution on the finite temporal window.  Lossless
-    energy is monitored rather than assumed.
+    zero-padded causal convolution on the finite temporal window.  A
+    model-appropriate lossless invariant is monitored rather than assumed:
+    envelope energy without self-steepening and spectral photon number when
+    self-steepening is active.
 """
 
 from __future__ import annotations
@@ -43,6 +45,7 @@ from .quantity import Quantity
 from .units import unit as _unit
 
 C_LIGHT = 299792458.0
+_HBAR_J_S = 6.62607015e-34 / (2.0 * math.pi)
 
 _LENGTH = _unit("m").dimension
 _TIME = _unit("s").dimension
@@ -53,6 +56,32 @@ _DISPERSION_3 = _unit("s^3/m").dimension
 _DISPERSION_4 = _unit("s^4/m").dimension
 _GAMMA_DIM = _unit("1/(W*m)").dimension
 _ATTENUATION = _unit("1/m").dimension
+
+
+def _photon_number_from_samples(
+    amplitude: np.ndarray,
+    time_step_s: float,
+    absolute_angular_frequencies: np.ndarray,
+) -> float:
+    """Return the discrete spectral photon count for a power-normalized envelope."""
+    spectrum = _fft.fft(amplitude)
+    spectral_power = np.abs(spectrum) ** 2
+    positive = absolute_angular_frequencies > 0.0
+    invalid_fraction = float(np.sum(spectral_power[~positive])) / max(
+        float(np.sum(spectral_power)), 1e-300
+    )
+    if invalid_fraction > 1e-12:
+        raise ValueError(
+            "The envelope contains non-negligible spectral power at non-positive "
+            "absolute optical frequencies; increase the temporal sampling interval "
+            "or use a higher carrier frequency"
+        )
+    weighted_spectrum = spectral_power[positive] / absolute_angular_frequencies[positive]
+    return float(
+        time_step_s
+        * np.sum(weighted_spectrum)
+        / (amplitude.size * _HBAR_J_S)
+    )
 
 
 def _length_of(value: Any, context: str) -> float:
@@ -159,9 +188,20 @@ class Pulse:
 
     @property
     def angular_frequencies(self) -> np.ndarray:
-        """Angular frequency grid Omega = omega - omega0 in rad/s."""
+        """Envelope FFT angular-frequency grid in rad/s.
+
+        The implementation uses the carrier convention
+        ``E(t) = Re[A(t) exp(-i omega0 t)]``. With SciPy's forward FFT sign,
+        the associated absolute optical frequency is therefore
+        ``omega_abs = omega0 - Omega``.
+        """
         freqs = _fft.fftfreq(self.samples, d=self.time_step_s)
         return 2.0 * math.pi * freqs
+
+    @property
+    def absolute_angular_frequencies(self) -> np.ndarray:
+        """Absolute optical angular frequencies for the envelope FFT bins."""
+        return self.carrier_angular_frequency - self.angular_frequencies
 
     @property
     def peak_power(self) -> Quantity:
@@ -174,6 +214,15 @@ class Pulse:
         """Total pulse energy integral(|A|^2 dt) in Joules."""
         e_joules = float(np.sum(np.abs(self.amplitude) ** 2)) * self.time_step_s
         return Quantity(e_joules, _unit("J"))
+
+    @property
+    def photon_number(self) -> float:
+        """Spectral photon count for the power-normalized envelope."""
+        return _photon_number_from_samples(
+            self.amplitude,
+            self.time_step_s,
+            self.absolute_angular_frequencies,
+        )
 
     @property
     def fwhm_duration(self) -> Quantity:
@@ -456,13 +505,28 @@ def _self_steepening_multiplier(omega: np.ndarray, omega0: float) -> np.ndarray:
     return 1.0 - omega / omega0
 
 
+class NLSEConservationTrace(list[float]):
+    """Backward-compatible energy trace with model-appropriate invariant data.
+
+    The list values remain ``E(z) / E(0)`` for compatibility with earlier
+    releases. ``invariant_history`` records the quantity used by the lossless
+    contract: envelope energy without self-steepening and spectral photon
+    number when self-steepening is active.
+    """
+
+    def __init__(self, *, conserved_quantity: str) -> None:
+        super().__init__([1.0])
+        self.conserved_quantity = conserved_quantity
+        self.invariant_history: list[float] = [1.0]
+
+
 def solve_nlse(
     pulse: Pulse,
     fiber: FiberParameters,
     distance: Any,
     steps: int = 100,
     check_energy: bool = True,
-) -> tuple[Pulse, list[float]]:
+) -> tuple[Pulse, NLSEConservationTrace]:
     """Propagate pulse along distance using the symmetric Split-Step Fourier Method (SSFM).
 
     Parameters
@@ -476,14 +540,19 @@ def solve_nlse(
     steps : int, default 100
         Number of longitudinal z-steps.
     check_energy : bool, default True
-        If True and loss is zero, validates energy conservation at every step.
+        If True and loss is zero, validates the model-appropriate conservative
+        invariant at every step. This is envelope energy when self-steepening is
+        disabled and spectral photon number when it is enabled. The parameter
+        name is retained for backward compatibility.
 
     Returns
     -------
     pulse_out : Pulse
         Propagated optical pulse.
-    energy_history : list[float]
-        Pulse energy relative to initial energy E(z) / E(0) at each step.
+    trace : NLSEConservationTrace
+        A list-compatible pulse-energy history. The ``invariant_history`` and
+        ``conserved_quantity`` attributes expose the quantity used by the
+        lossless contract.
     """
     total_z = _length_of(distance, "solve_nlse.distance")
     if total_z <= 0.0:
@@ -517,13 +586,22 @@ def solve_nlse(
 
     shock_multiplier = _self_steepening_multiplier(omega, omega0)
 
-    # Initial field and energy
+    # Initial field and model-appropriate invariant
     a = pulse.amplitude.copy()
     e0 = float(np.sum(np.abs(a) ** 2))
     if e0 == 0.0:
         raise ValueError("Cannot propagate an empty pulse with zero energy")
-
-    energy_history: list[float] = [1.0]
+    conserved_quantity = "photon_number" if fiber.self_steepening else "energy"
+    invariant0 = (
+        _photon_number_from_samples(
+            a,
+            pulse.time_step_s,
+            pulse.absolute_angular_frequencies,
+        )
+        if fiber.self_steepening
+        else e0
+    )
+    trace = NLSEConservationTrace(conserved_quantity=conserved_quantity)
 
     def nonlinear_rhs(field: np.ndarray) -> np.ndarray:
         """Evaluate the nonlinear G-NLSE right-hand side at one field state."""
@@ -583,17 +661,27 @@ def solve_nlse(
         # 3. Second half-step dispersion
         a = _fft.ifft(d_half * _fft.fft(a))
 
-        # Energy tracking
+        # Energy reporting and model-appropriate invariant tracking
         current_energy = float(np.sum(np.abs(a) ** 2))
         rel_energy = current_energy / e0
-        energy_history.append(rel_energy)
+        trace.append(rel_energy)
+        current_invariant = (
+            _photon_number_from_samples(
+                a,
+                pulse.time_step_s,
+                pulse.absolute_angular_frequencies,
+            )
+            if fiber.self_steepening
+            else current_energy
+        )
+        rel_invariant = current_invariant / invariant0
+        trace.invariant_history.append(rel_invariant)
 
         if check_energy and alpha_si == 0.0:
-            # Lossless G-NLSE propagation preserves the envelope L2 norm.
-            if abs(rel_energy - 1.0) > 1e-4:
+            if abs(rel_invariant - 1.0) > 1e-4:
                 raise ContractViolation(
-                    f"Energy conservation violated at step {step}: "
-                    f"relative energy drift {abs(rel_energy - 1.0):.2e} exceeds tolerance 1e-4"
+                    f"{conserved_quantity} conservation violated at step {step}: "
+                    f"relative drift {abs(rel_invariant - 1.0):.2e} exceeds tolerance 1e-4"
                 )
 
     out_pulse = Pulse(
@@ -601,11 +689,12 @@ def solve_nlse(
         time_step=pulse.time_step,
         wavelength=pulse.wavelength,
     )
-    return out_pulse, energy_history
+    return out_pulse, trace
 
 
 __all__ = [
     "FiberParameters",
+    "NLSEConservationTrace",
     "Pulse",
     "gaussian_pulse",
     "soliton_parameters",

@@ -102,7 +102,12 @@ def bragg_reflectance(
     n_substrate: Any,
     pairs: int,
 ) -> float:
-    """Peak reflectance of a quarter-wave stack of ``pairs`` high/low bilayers."""
+    """Peak reflectance of a quarter-wave ``(HL)^N H`` stack.
+
+    ``pairs`` is ``N``: the number of high/low pairs before the terminal
+    high-index quarter-wave layer.  The incident medium is therefore followed
+    by ``H, L, ..., H, L, H`` and then the substrate.
+    """
     n0 = _index_of(n_incident, "bragg_reflectance")
     high = _index_of(n_high, "bragg_reflectance")
     low = _index_of(n_low, "bragg_reflectance")
@@ -120,7 +125,7 @@ def bragg_reflectance(
 def quarter_wave_stack_reflectance(
     n_high: Any, n_low: Any, n_substrate: Any, pairs: int, n_incident: Any = 1.0
 ) -> float:
-    """Convenience wrapper for a stack incident from air."""
+    """Convenience wrapper for an air-incident ``(HL)^N H`` stack."""
     return bragg_reflectance(n_incident, n_high, n_low, n_substrate, pairs)
 
 

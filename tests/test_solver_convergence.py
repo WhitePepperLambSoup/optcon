@@ -53,6 +53,8 @@ def test_solver_convergence_returns_both_solver_families_and_writes_csv(tmp_path
         "reference_discretization",
         "relative_error",
         "energy_drift",
+        "monitored_invariant",
+        "invariant_drift",
         "estimated_order",
         "runtime_s",
     } <= set(written[0])
@@ -88,3 +90,24 @@ def test_conservative_gnlse_error_decreases_and_energy_is_tracked():
     ]
     assert resolved_orders
     assert all(math.isfinite(order) for order in resolved_orders)
+
+
+def test_generalized_gnlse_reports_energy_and_monitors_photon_number():
+    rows = run_solver_convergence(
+        fox_points=(16,),
+        gnlse_steps=(8, 16),
+        include_generalized=True,
+    )
+    generalized_rows = [
+        row
+        for row in rows
+        if row["solver"] == "gnlse"
+        and row["model_variant"] == "raman_self_steepening"
+    ]
+
+    assert generalized_rows
+    assert {row["monitored_invariant"] for row in generalized_rows} == {
+        "photon_number"
+    }
+    assert all(float(row["energy_drift"]) > 0.0 for row in generalized_rows)
+    assert max(float(row["invariant_drift"]) for row in generalized_rows) < 1e-4

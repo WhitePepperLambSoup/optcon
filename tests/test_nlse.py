@@ -6,11 +6,13 @@ from typing import Any, cast
 import numpy as np
 import pytest
 
+from optcon import NLSEConservationTrace as PublicNLSEConservationTrace
 from optcon import nlse as nlse_module
 from optcon import q
 from optcon.errors import DimensionError
 from optcon.nlse import (
     FiberParameters,
+    NLSEConservationTrace,
     Pulse,
     _self_steepening_multiplier,
     gaussian_pulse,
@@ -31,6 +33,25 @@ def test_pulse_creation_and_properties():
     assert pulse.peak_power.to_value("W") == pytest.approx(100.0, rel=1e-3)
     assert pulse.fwhm_duration.to_value("fs") == pytest.approx(200.0, rel=1e-2)
     assert pulse.energy.to_value("pJ") > 0.0
+    assert pulse.photon_number > 0.0
+
+
+def test_conservation_trace_is_exported_from_the_public_package():
+    assert PublicNLSEConservationTrace is NLSEConservationTrace
+
+
+def test_photon_number_matches_energy_over_carrier_photon_energy_for_a_cw_envelope():
+    pulse = Pulse(
+        amplitude=np.ones(64, dtype=complex),
+        time_step=q(2.0, "fs"),
+        wavelength=q(1550.0, "nm"),
+    )
+
+    expected = pulse.energy.to_value("J") / (
+        nlse_module._HBAR_J_S * pulse.carrier_angular_frequency
+    )
+
+    assert pulse.photon_number == pytest.approx(expected, rel=1e-12)
 
 
 def test_pulse_dimension_validation():
@@ -465,7 +486,7 @@ def test_self_steepening_substep_converges_with_longitudinal_refinement():
     assert medium_error < 0.35 * coarse_error
 
 
-def test_full_lossless_raman_and_self_steepening_track_energy():
+def test_full_lossless_raman_and_self_steepening_track_photon_number():
     pulse = gaussian_pulse(
         peak_power=q(5.0, "W"),
         fwhm_duration=q(200.0, "fs"),
@@ -479,7 +500,33 @@ def test_full_lossless_raman_and_self_steepening_track_energy():
         raman_fraction=0.18,
         self_steepening=True,
     )
-    _, energy_history = solve_nlse(
+    _, trace = solve_nlse(
         pulse, fiber, distance=q(1.0, "m"), steps=16, check_energy=True
     )
-    assert max(abs(value - 1.0) for value in energy_history) < 1e-4
+
+    assert isinstance(trace, NLSEConservationTrace)
+    assert trace.conserved_quantity == "photon_number"
+    assert max(abs(value - 1.0) for value in trace.invariant_history) < 1e-4
+    assert len(trace.invariant_history) == len(trace)
+
+
+def test_raman_without_self_steepening_uses_envelope_energy_as_the_invariant():
+    pulse = gaussian_pulse(
+        peak_power=q(5.0, "W"),
+        fwhm_duration=q(200.0, "fs"),
+        wavelength=q(1550.0, "nm"),
+        samples=128,
+        time_window=q(2.0, "ps"),
+    )
+    fiber = FiberParameters(
+        beta2=q(-20.0, "ps^2/km"),
+        gamma=q(2.0, "1/(W*km)"),
+        raman_fraction=0.18,
+    )
+
+    _, trace = solve_nlse(
+        pulse, fiber, distance=q(1.0, "m"), steps=16, check_energy=True
+    )
+
+    assert trace.conserved_quantity == "energy"
+    assert trace.invariant_history == pytest.approx(list(trace))

@@ -329,7 +329,9 @@ def test_fox_li_angular_tilt_increases_loss():
     mode_aligned = solve_fox_li_modes(
         res_aligned, num_modes=1, num_points=64, check_contracts=True
     )[0]
-    # For tilted resonator, reciprocity is broken, but passivity still holds
+    # Tilt makes this one-way matrix non-symmetric, so the representation-level
+    # transpose contract is not asserted. This does not imply broken Lorentz
+    # reciprocity; passivity remains applicable.
     mode_tilted = solve_fox_li_modes(
         res_tilted, num_modes=1, num_points=64, check_contracts=True
     )[0]

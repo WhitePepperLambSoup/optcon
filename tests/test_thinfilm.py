@@ -82,6 +82,10 @@ def test_bragg_reflectance_matches_the_closed_form():
     assert bragg_reflectance(N_AIR, n_high, n_low, N_GLASS, pairs) == pytest.approx(expected)
 
 
+def test_bragg_reflectance_documents_its_terminal_high_index_layer():
+    assert "(HL)^N H" in (bragg_reflectance.__doc__ or "")
+
+
 def test_a_graded_index_stack_beats_a_single_layer_of_the_same_material():
     single = single_layer_reflectance(
         N_AIR, 2.3, N_GLASS, anti_reflection_thickness(2.3, q(LAMBDA_NM, "nm")), q(LAMBDA_NM, "nm")

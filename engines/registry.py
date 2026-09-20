@@ -21,6 +21,7 @@ import sys
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
+from types import ModuleType
 
 
 def corpus_root() -> Path:
@@ -56,6 +57,7 @@ ENGINE_SPECS: dict[str, EngineSpec] = {
         length_unit="nm",
         angle_unit="rad",
         takes_polarization=True,
+        dependency_imports=("tmm",),
         summary=(
             "Steven Byrnes reference TMM (numpy, scalar); nm + radians; "
             "returns both r,t amplitudes and R,T powers"
@@ -363,6 +365,17 @@ def _prepare_import_compatibility(name: str) -> None:
             integrate.trapz = trapezoid
 
 
+def import_engine_module(name: str) -> ModuleType:
+    """Load an engine, accepting the installed TMM package layout as well."""
+    spec = engine_spec(name)
+    try:
+        return importlib.import_module(spec.module)
+    except ModuleNotFoundError as error:
+        if name != "tmm_core" or error.name != spec.module:
+            raise
+        return importlib.import_module("tmm.tmm_core")
+
+
 @lru_cache(maxsize=None)
 def import_engine(name: str) -> tuple[bool, str]:
     """Return ``(importable, message)`` for one engine, adding its path once."""
@@ -375,7 +388,10 @@ def import_engine(name: str) -> tuple[bool, str]:
     required_imports = spec.required_imports or (spec.module,)
     try:
         for module_name in required_imports:
-            importlib.import_module(module_name)
+            if module_name == spec.module:
+                import_engine_module(name)
+            else:
+                importlib.import_module(module_name)
     except Exception as error:  # noqa: BLE001 - reported, not swallowed
         return False, f"{type(error).__name__}: {error}"
     return True, ""

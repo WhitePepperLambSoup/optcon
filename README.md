@@ -13,18 +13,19 @@ properties the computer can check:
 * **physical invariants** - losslessness, passivity and reciprocity are
   declared and checked, and a waveplate, a polariser and a rotator each fail a
   different one;
-* **derivatives** - a gradient is verified against finite differences and its
-  adjoint with the `<Jv, w> == <v, J^\dagger w>` dot-product test.
+* **derivatives** - candidate adjoints are checked by finite-difference
+  dot-product tests using either the complex Hermitian pairing or the real
+  dual pairing required when real parameters produce complex fields.
 
 On top of that it carries a closed-form optics toolkit (ABCD matrices,
 Gaussian beams, Fresnel, Jones calculus, cavities, fibre, gratings, thin-film
 design, diffraction, beam quality, detector noise) and a layer that brings
 external solvers under the same type discipline.
 
-It is **not** a replacement for an FDTD, FEM or RCWA solver; it is the
-semantic layer above them. See [docs/DESIGN.md](docs/DESIGN.md) for the full
-rationale and for the two upstream discrepancies this approach has already
-found.
+It is **not** a replacement for an FDTD, FEM or RCWA solver; it is a
+semantic layer that can sit above them. See [docs/DESIGN.md](docs/DESIGN.md) for the full
+rationale and for two convention-sensitive comparisons that illustrate why
+the semantic layer is useful.
 
 [docs/API.md](docs/API.md) is a generated index of all public functions.
 
@@ -89,7 +90,7 @@ sqrt(amplitude_ratio(0.9))       # -> AmplitudeOrderError: that is a sqrt too fa
 | `thermal` | thermal lens focal length, Gaussian aperture and clipping losses |
 | `nonlinear` | SHG phase matching, coherence length, quasi-phase-matching period |
 | `fox_li` | Fredholm integral operator for open resonators with finite apertures, clipping loss, and tilt |
-| `nlse` | G-NLSE split-step Fourier solver (SSFM) with dispersion (beta2, beta3), SPM, Raman, and self-steepening |
+| `nlse` | G-NLSE split-step Fourier solver (SSFM) with dispersion, SPM, Raman, self-steepening, and model-appropriate conservation traces |
 | `vector_fields` | two-component fields: Stokes maps, analyzers, radial polarisation |
 | `mueller` | Stokes vectors and Mueller matrices, including depolarisation |
 | `engines` | registry and adapters for external solvers, plus differential testing |
@@ -100,10 +101,11 @@ The repository separates runnable adapter checks from registry-only engine recor
 
 | Finding | Current evidence |
 | --- | --- |
-| `miepython` versus the independent `optcon_reference` series | Maximum relative discrepancy `1.77e-10` over five diameters. |
-| PyMieScatt with explicit `nMedium=1.0` versus the independent reference | Maximum relative discrepancy `3.06e-7` over five diameters; the adapter states the medium explicitly. |
-| PyMieScatt library-default medium characterization | Maximum relative discrepancy `1.50e-3` over five diameters, showing that the default changes the physical query. |
-| LightPipes `Fresnel` versus the Gaussian closed form | About `6.9%` excess width at `z=z_R`, persistent from 256 to 4096 samples; `Forvard` remains within about `6.52e-9` at that point. |
+| `miepython` versus the author-constructed `optcon_reference` series | Maximum relative discrepancy `1.77e-10` over five diameters. |
+| PyMieScatt with explicit `nMedium=1.0` versus the author-constructed series | Maximum relative discrepancy `3.06e-7` over five diameters; the adapter states the medium explicitly. |
+| Explicit air-medium versus vacuum Mie query | Maximum relative discrepancy `9.87e-4` over five diameters, showing that the stated medium changes the physical query. |
+| LightPipes `Fresnel` versus the Gaussian closed form | About `6.9%` excess width at `z=z_R`, persistent from 256 to 4096 samples; `Forvard` remains within about `6.52e-11` relative difference at that point. |
+| Thin-film closed forms versus registered `tmm_core` | 61 fixed interface, single-layer, and quarter-wave `(HL)^N H` stack queries; maximum absolute `R` and `T` discrepancies `2.914e-16` and `9.992e-16`. |
 | Registry-only engines | The registry records conventions and availability; a numerical comparison needs an installed adapter and a shared observable. |
 
 Optional-engine status is reported by `python -m optcon.benchmarks.engine_status` and distinguishes `ready`, `missing`, and import `error`.
@@ -112,6 +114,9 @@ The runnable examples reproduce the available checks (or run all in one pass):
 
 ```bash
 python -m optcon.benchmarks.run_all               # reproduce all experiments & benchmarks
+python -m optcon.benchmarks.fault_injection        # run the deterministic silent-fault corpus
+python -m optcon.benchmarks.adjoint_stress         # run the multi-parameter adjoint sweep
+python -m optcon.benchmarks.thinfilm_adjudication  # compare closed-form thin-film results with tmm_core
 python -m optcon.examples.design_a_laser          # end-to-end workflow
 python -m optcon.examples.experiment_01_guard_bench
 python -m optcon.examples.experiment_02_cross_engine
@@ -119,6 +124,11 @@ python -m optcon.examples.experiment_03_mie_adjudication
 python -m optcon.examples.experiment_04_beam_adjudication
 python -m optcon.examples.experiment_05_cavity_thermal_tolerance
 ```
+
+The cavity tolerance case study writes the figure and four row-level CSV
+files: the angular sweep, thermal-lens sweep, combined tolerance map, and a
+summary of the physical parameters and reported thresholds. Pass
+`--output-dir` and `--data-dir` to place those artifacts elsewhere.
 
 Experiment 05 writes its plot to `optcon-artifacts/figures` in the current
 working directory. Choose another location with:
@@ -163,6 +173,23 @@ python -m optcon.benchmarks.convergence
 
 The command writes `optcon-artifacts/benchmarks/solver_convergence.csv`.
 
+Run the semantic-contract fault corpus with:
+
+```bash
+python -m optcon.benchmarks.fault_injection
+```
+
+The command writes `optcon-artifacts/benchmarks/fault_injection.csv` with
+row-level detector outcomes, effect magnitudes, diagnostics, and timing
+provenance. The corpus is deterministic and is intended to verify the stated
+fault classes, not to estimate defect prevalence in unrelated software.
+
+The adjoint stress command writes
+`optcon-artifacts/benchmarks/adjoint_stress.csv`. It evaluates a three-parameter
+phase-and-amplitude map on a nonuniform quadrature grid at 24 fixed parameter
+points and eight fixed probe seeds. The correct quadrature-metric adjoint and a
+uniform-metric negative control are reported row by row.
+
 ## Key Design Principles
 
 1. **Angle as an independent base dimension**: Standard SI dimensional analysis treats radians as dimensionless, permitting angles to be added directly to bare scalars. In optical alignment and beam propagation, this frequently masks unit errors. `optcon` defines `angle` as an independent base dimension alongside length, mass, and time.
@@ -179,8 +206,12 @@ The command writes `optcon-artifacts/benchmarks/solver_convergence.csv`.
 4. **Executable physical invariants and adjoint verification**:
    - `assert_unitary(M)`: Enforces energy preservation ($M^\dagger M = I$)
    - `assert_passive(M)`: Enforces passivity ($\sigma_{\max}(M) \le 1$)
-   - `assert_reciprocal(M)`: Enforces reciprocity ($M = M^T$)
-   - `dot_test(forward, adjoint, x)`: Claerbout's Hermitian adjoint dot-product test ensuring $\langle Jv, w \rangle = \langle v, J^\dagger w \rangle$ for gradient validation.
+   - `assert_reciprocal(M)`: Enforces the transpose-symmetry form of reciprocity
+     ($M = M^T$) only in a declared matched reciprocal basis
+   - `dot_test(forward, adjoint, x)`: uses the Hermitian identity
+     $\langle Jv,w\rangle=\langle v,J^\dagger w\rangle$ for complex state
+     spaces and the real dual pairing $\operatorname{Re}\langle Jv,w\rangle
+     =v^T J_R^*w$ for real parameters mapped to complex fields.
 
 ## Scope and Boundaries
 

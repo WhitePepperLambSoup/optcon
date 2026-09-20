@@ -10,7 +10,7 @@ import numpy as np
 from ..errors import DimensionError
 from ..quantity import POWER, Quantity, q
 from ..units import unit as _unit
-from .registry import engine_spec, import_engine, require_available
+from .registry import engine_spec, import_engine, import_engine_module, require_available
 
 
 def _length_in(value: Any, target: str, field: str) -> float:
@@ -33,8 +33,7 @@ def _angle_in_radians(value: Any) -> float:
 
 
 def _tmm_core(n_list, d_list, theta_rad, wavelength, polarization):
-    import tmm_core
-
+    tmm_core = import_engine_module("tmm_core")
     result = tmm_core.coh_tmm(polarization, n_list, d_list, theta_rad, wavelength)
     return float(result["R"]), float(result["T"])
 

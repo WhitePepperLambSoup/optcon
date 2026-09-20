@@ -9,7 +9,7 @@ amplitudes, so:
 
 * ``unitary``   -> lossless (energy preserving) and polarisation preserving
 * ``passive``   -> no singular value exceeds one, i.e. no net gain
-* ``reciprocal``-> symmetric in the amplitude basis
+* ``reciprocal``-> symmetric in a declared matched reciprocal amplitude basis
 """
 
 from __future__ import annotations
@@ -75,8 +75,10 @@ def reciprocity_error(matrix: Any) -> float:
     K(x1, x2) = K(x2, x1) in isotropic open resonators and reciprocal multi-port
     scattering matrices with identical port normalization), matrix symmetry M = M^T
     is the algebraic manifestation of electromagnetic reciprocity (Lorentz reciprocity).
-    Note: Magneto-optic, non-reciprocal media (e.g. Faraday isolators) or asymmetric
-    port bases break this relation.
+    Magneto-optic non-reciprocal media (for example, Faraday isolators) can
+    violate physical reciprocity. Asymmetric port bases or normalization can
+    instead make this matrix relation inapplicable without breaking physical
+    reciprocity.
     """
     operator = _as_matrix(matrix)
     _require_square(operator, "matrix")
@@ -156,7 +158,7 @@ def assert_reciprocal(
     atol: float = DEFAULT_ATOL,
     name: str = "operator",
 ) -> None:
-    """Declare a travelling-wave operator reciprocal; raise if it is not."""
+    """Assert matrix symmetry in the caller's matched reciprocal basis."""
     if is_reciprocal(matrix, rtol=rtol, atol=atol):
         return
     raise ContractViolation(
@@ -278,16 +280,20 @@ def dot_test(
     eps: float = DEFAULT_EPS,
     rtol: float = DEFAULT_DOT_RTOL,
 ) -> dict:
-    """The classic complex inner-product adjoint check.
+    """Check a supplied adjoint with the inner product of the input space.
 
     ``Jv`` comes from central differences of ``forward``; ``J^H w`` comes from
-    the supplied ``adjoint``.  The two inner products must agree for random
-    probes ``v`` and ``w``.
+    the supplied ``adjoint``. For complex-valued inputs, the test uses the
+    Hermitian inner product. For real-valued inputs, including real parameters
+    mapped to complex fields, it uses the real dual pairing
+    ``Re(<Jv, w>) = <v, J*_R w>`` and requires the returned cotangent to belong
+    to the real input space.
     """
     point = _as_vector(x, "x")
     step_size = _validate_eps(eps)
     output = _as_vector(forward(point), "forward(x)")
     generator = np.random.default_rng(seed)
+
     def random_probe(size: int, template: np.ndarray) -> np.ndarray:
         real = generator.standard_normal(size)
         if np.iscomplexobj(template):
@@ -318,14 +324,28 @@ def dot_test(
         raise AdjointCheckFailure(
             f"adjoint(w) has shape {adjoint_probe.shape} but must have shape {point.shape}"
         )
-    left = np.vdot(forward_probe, probe_out)
-    right = np.vdot(probe_in, adjoint_probe)
+    if np.iscomplexobj(point):
+        inner_product = "complex"
+        left = np.vdot(forward_probe, probe_out)
+        right = np.vdot(probe_in, adjoint_probe)
+        adjoint_domain_error = 0.0
+    else:
+        inner_product = "real"
+        left = float(np.real(np.vdot(forward_probe, probe_out)))
+        adjoint_norm = float(np.linalg.norm(adjoint_probe))
+        imaginary_norm = float(np.linalg.norm(np.imag(adjoint_probe)))
+        adjoint_domain_error = imaginary_norm / max(adjoint_norm, 1e-300)
+        right = float(np.dot(probe_in, np.real(adjoint_probe)))
     scale = max(abs(left), abs(right), 1e-300)
+    pairing_error = float(abs(left - right) / scale)
     return {
-        "ok": bool(abs(left - right) / scale <= rtol),
+        "ok": bool(pairing_error <= rtol and adjoint_domain_error <= rtol),
         "left": left,
         "right": right,
-        "rel_error": float(abs(left - right) / scale),
+        "rel_error": max(pairing_error, adjoint_domain_error),
+        "pairing_error": pairing_error,
+        "adjoint_domain_error": adjoint_domain_error,
+        "inner_product": inner_product,
         "rtol": rtol,
     }
 
@@ -343,6 +363,20 @@ def assert_adjoint(
     report = dot_test(forward, adjoint, x, seed=seed, eps=eps, rtol=rtol)
     if report["ok"]:
         return
+    if report["adjoint_domain_error"] > rtol:
+        raise AdjointCheckFailure(
+            f"{name}: adjoint returned a complex cotangent to a real parameter "
+            f"space; relative imaginary norm "
+            f"{report['adjoint_domain_error']:.3e} exceeds rtol {rtol:g}. "
+            f"The real dual-pairing residual is {report['pairing_error']:.3e}."
+        )
+    if report["inner_product"] == "real":
+        raise AdjointCheckFailure(
+            f"{name}: real adjoint test failed with relative error "
+            f"{report['rel_error']:.3e} exceeding rtol {rtol:g} "
+            f"(Re<Jv, w> = {report['left']:.6g}, "
+            f"<v, J*_R w> = {report['right']:.6g})"
+        )
     raise AdjointCheckFailure(
         f"{name}: adjoint test failed with relative error {report['rel_error']:.3e} "
         f"exceeding rtol {rtol:g} (<Jv, w> = {report['left']:.6g}, "

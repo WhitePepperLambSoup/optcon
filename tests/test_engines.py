@@ -192,22 +192,19 @@ def test_compare_across_engines_reports_a_verdict():
 def test_compare_across_engines_still_reports_a_real_disagreement():
     """The harness must not have been tuned into always saying yes.
 
-    Feeding one engine a different physical question - here PyMieScatt's own
-    library default medium index - must still be caught.
+    Feeding one engine a different physical question - here an explicitly
+    stated air medium instead of vacuum - must still be caught.
     """
 
     def runner(engine):
-        if engine == "PyMieScatt":
-            import PyMieScatt
-
-            result = PyMieScatt.MieQ(1.5 + 0.01j, 550.0, 200.0, asDict=True)
-            return {key: float(result[key]) for key in ("Qext", "Qsca", "Qabs", "g")}
+        medium = 1.00027316 if engine == "PyMieScatt" else 1.0
         return {
             key: quantity.value
             for key, quantity in mie_efficiencies(
                 m=1.5 + 0.01j,
                 diameter=q(200.0, "nm"),
                 wavelength=q(550.0, "nm"),
+                medium_index=medium,
                 engine=engine,
             ).items()
         }
@@ -224,6 +221,68 @@ def test_compare_across_engines_still_reports_a_real_disagreement():
     assert report["max_rel_error"] > 1e-9
     assert report["worst_key"] in {"Qext", "Qsca", "Qabs", "g"}
     assert 1e-4 < report["max_rel_error"] < 1e-1
+
+
+def test_compare_across_engines_rejects_missing_shared_observables():
+    report = compare_across_engines(
+        lambda engine: {"reflectance": 0.4}
+        if engine == "reference"
+        else {"transmittance": 0.6},
+        engines=["reference", "candidate"],
+    )
+
+    assert report["agree"] is False
+    assert report["missing_keys"] == {
+        "reference": ["transmittance"],
+        "candidate": ["reflectance"],
+    }
+
+
+def test_compare_across_engines_rejects_empty_observable_sets():
+    report = compare_across_engines(
+        lambda _engine: {},
+        engines=["reference", "candidate"],
+    )
+
+    assert report["agree"] is False
+
+
+def test_compare_across_engines_rejects_duplicate_engine_names():
+    with pytest.raises(ValueError, match="unique engine names"):
+        compare_across_engines(
+            lambda _engine: {"value": 1.0},
+            engines=["same", "same"],
+        )
+
+
+def test_compare_across_engines_rejects_nonfinite_observables():
+    report = compare_across_engines(
+        lambda engine: {"value": float("nan") if engine == "candidate" else 1.0},
+        engines=["reference", "candidate"],
+    )
+
+    assert report["agree"] is False
+    assert report["nonfinite_keys"] == {"candidate": ["value"]}
+
+
+@pytest.mark.parametrize(
+    ("reference", "candidate", "rtol", "atol"),
+    [
+        (1.0e12, 1.0e12 + 100.0, 1.0e-9, 0.0),
+        (1.0e-12, 2.0e-12, 1.0e-3, 1.0e-9),
+    ],
+)
+def test_compare_across_engines_applies_absolute_and_relative_tolerances_on_value_scale(
+    reference, candidate, rtol, atol
+):
+    report = compare_across_engines(
+        lambda engine: {"value": reference if engine == "reference" else candidate},
+        engines=["reference", "candidate"],
+        rtol=rtol,
+        atol=atol,
+    )
+
+    assert report["agree"] is True
 
 
 def test_power_ratio_helper_is_available_for_engine_outputs():

@@ -108,7 +108,13 @@ known-first-party = ["optcon"]
 # only parse when told the target is 3.12 or newer.  The runtime floor stays
 # at 3.11 (see requires-python); this affects type checking only.
 python_version = "3.12"
-exclude = ["^tmp/", "^tmp_pytest/"]
+exclude = [
+  "^tmp/",
+  "^tmp_pytest",
+  "^optcon-artifacts/",
+  "^\\.tmp_pytest",
+  "^\\.pytest-tmp",
+]
 warn_unused_ignores = true
 warn_redundant_casts = true
 no_implicit_optional = true

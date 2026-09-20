@@ -4,7 +4,15 @@ from pathlib import Path
 import numpy as np
 
 from optcon import q
-from optcon.benchmarks import bench, convergence
+from optcon.benchmarks import (
+    adjoint_stress,
+    bench,
+    convergence,
+    fault_injection,
+    heldout_mutations,
+    run_all,
+    thinfilm_adjudication,
+)
 from optcon.benchmarks.bench import naive_decompose
 from optcon.modes import decompose
 from optcon.propagation import gaussian_field
@@ -16,6 +24,55 @@ def test_default_benchmark_outputs_are_kept_outside_documentation():
 
     assert bench.BENCHMARK_DATA_PATH == artifact_dir / "benchmark_operations.csv"
     assert convergence.DEFAULT_OUTPUT_PATH == artifact_dir / "solver_convergence.csv"
+    assert fault_injection.DEFAULT_FAULT_INJECTION_PATH == artifact_dir / "fault_injection.csv"
+    assert heldout_mutations.DEFAULT_OUTPUT_PATH == artifact_dir / "heldout_mutations.csv"
+    assert adjoint_stress.DEFAULT_OUTPUT_PATH == artifact_dir / "adjoint_stress.csv"
+    assert thinfilm_adjudication.DEFAULT_OUTPUT_PATH == artifact_dir / "thinfilm_adjudication.csv"
+
+
+def test_complete_reproducibility_suite_runs_the_fault_corpus():
+    assert (
+        "Semantic-contract fault-injection corpus",
+        "optcon.benchmarks.fault_injection",
+    ) in run_all.STAGES
+
+
+def test_complete_reproducibility_suite_runs_the_heldout_mutation_campaign():
+    assert (
+        "Frozen held-out mutation campaign",
+        "optcon.benchmarks.heldout_mutations",
+    ) in run_all.STAGES
+
+
+def test_complete_reproducibility_suite_runs_the_adjoint_stress_sweep():
+    assert (
+        "Multi-parameter adjoint stress sweep",
+        "optcon.benchmarks.adjoint_stress",
+    ) in run_all.STAGES
+
+
+def test_complete_reproducibility_suite_runs_thinfilm_adjudication():
+    assert (
+        "Thin-film closed-form and TMM adjudication",
+        "optcon.benchmarks.thinfilm_adjudication",
+    ) in run_all.STAGES
+
+
+def test_adjoint_stress_sweep_separates_correct_and_wrong_metrics(tmp_path):
+    output = tmp_path / "adjoint_stress.csv"
+
+    records = adjoint_stress.run_adjoint_stress(
+        output_path=output,
+        parameter_count=3,
+        probe_seeds=(0, 1, 2),
+    )
+
+    assert len(records) == 9
+    assert max(record.correct_rel_error for record in records) < 1e-5
+    assert min(record.wrong_rel_error for record in records) > 1e-3
+    assert all(record.correct_ok for record in records)
+    assert all(record.wrong_detected for record in records)
+    assert output.exists()
 
 
 def test_write_results_persists_measurements_with_provenance(tmp_path):

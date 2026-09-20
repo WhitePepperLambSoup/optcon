@@ -6,6 +6,34 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Row-level CSV export for the laser-cavity thermal-lens and angular-tolerance
+  case study, including the combined two-parameter coupling map and a scalar
+  parameter summary.
+
+### Changed
+
+- The cavity case study accepts an explicit data directory so its figure and
+  numerical inputs can be archived and regenerated independently.
+- Public documentation now identifies the cavity case study as a reproducible
+  physics-facing workflow rather than a timing-only example.
+
+### Fixed
+
+- The PyMieScatt adapter now normalizes the refractive index and vacuum
+  wavelength before calling upstream code. This handles the differing
+  `nMedium` behavior found in source and wheel artifacts carrying version
+  `1.8.1.1`, including non-vacuum media.
+- Thin-film comparisons accept the PyPI `tmm` package layout as well as a
+  neighboring source checkout. Missing-module fallback does not hide engine
+  dependency failures.
+- The cavity tolerance calculation now includes both midpoint-lens crossings
+  per round trip and wavefront curvature in same-plane Gaussian coupling.
+- The joint tilt/thermal map uses the Gaussian field overlap rather than a
+  product of independent coupling factors. Regression tests compare it with
+  direct field integration.
+
 ## [0.1.1] - 2026-09-17
 
 ### Added
@@ -107,9 +135,9 @@ First cut. The API is usable but not frozen.
 
 ### Historical and optional findings
 
-- The PyMieScatt default-medium experiment is retained as a conditional
-  check in `examples/experiment_03_mie_adjudication.py`. It runs when the
-  optional dependencies are installed.
+- The PyMieScatt medium-convention experiment uses explicit vacuum and air
+  queries. It does not rely on the package default, which differs between
+  source and wheel artifacts carrying the same upstream version.
 - In the current stated finite-window configuration, LightPipes' convolution
   propagator produces a wider Gaussian radius than the closed form, while the
   spectral propagator tracks the closed form closely. The example reports the

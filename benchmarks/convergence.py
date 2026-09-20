@@ -22,7 +22,12 @@ import numpy as np
 
 from optcon import q
 from optcon.fox_li import FoxLiResonator, solve_fox_li_modes
-from optcon.nlse import FiberParameters, gaussian_pulse, solve_nlse
+from optcon.nlse import (
+    FiberParameters,
+    NLSEConservationTrace,
+    gaussian_pulse,
+    solve_nlse,
+)
 
 DEFAULT_FOX_POINTS = (16, 32, 64, 128, 256)
 DEFAULT_GNLSE_STEPS = (25, 50, 100, 200)
@@ -47,6 +52,8 @@ CSV_FIELDS = [
     "relative_error",
     "relative_loss_error",
     "energy_drift",
+    "monitored_invariant",
+    "invariant_drift",
     "estimated_order",
     "runtime_s",
     "samples",
@@ -161,6 +168,8 @@ def _fox_li_rows(points: tuple[int, ...]) -> list[dict[str, Any]]:
                 "relative_error": eigen_error,
                 "relative_loss_error": loss_error,
                 "energy_drift": 0.0,
+                "monitored_invariant": "",
+                "invariant_drift": "",
                 "estimated_order": order,
                 "runtime_s": runtime_s,
                 "samples": "",
@@ -210,10 +219,10 @@ def _gnlse_rows(steps: tuple[int, ...], *, generalized: bool) -> list[dict[str, 
         fiber,
         distance=distance,
         steps=reference_steps,
-        check_energy=not generalized,
+        check_energy=True,
     )
 
-    measurements: list[tuple[int, Any, list[float], float]] = []
+    measurements: list[tuple[int, Any, NLSEConservationTrace, float]] = []
     for step_count in steps:
         start = time.perf_counter()
         result, history = solve_nlse(
@@ -221,7 +230,7 @@ def _gnlse_rows(steps: tuple[int, ...], *, generalized: bool) -> list[dict[str, 
             fiber,
             distance=distance,
             steps=step_count,
-            check_energy=not generalized,
+            check_energy=True,
         )
         measurements.append((step_count, result, history, time.perf_counter() - start))
 
@@ -235,8 +244,17 @@ def _gnlse_rows(steps: tuple[int, ...], *, generalized: bool) -> list[dict[str, 
     for (step_count, _result, history, runtime_s), error, order in zip(
         measurements, errors, orders, strict=True
     ):
-        drift = max(abs(float(value) - 1.0) for value in history)
-        reference_drift = max(abs(float(value) - 1.0) for value in reference_history)
+        energy_drift = max(abs(float(value) - 1.0) for value in history)
+        invariant_drift = max(
+            abs(float(value) - 1.0) for value in history.invariant_history
+        )
+        reference_energy_drift = max(
+            abs(float(value) - 1.0) for value in reference_history
+        )
+        reference_invariant_drift = max(
+            abs(float(value) - 1.0)
+            for value in reference_history.invariant_history
+        )
         rows.append(
             {
                 "solver": "gnlse",
@@ -251,12 +269,15 @@ def _gnlse_rows(steps: tuple[int, ...], *, generalized: bool) -> list[dict[str, 
                 "round_trip_loss": "",
                 "relative_error": error,
                 "relative_loss_error": "",
-                "energy_drift": drift,
+                "energy_drift": energy_drift,
+                "monitored_invariant": history.conserved_quantity,
+                "invariant_drift": invariant_drift,
                 "estimated_order": order,
                 "runtime_s": runtime_s,
                 "samples": samples,
                 "time_window_ps": time_window_ps,
-                "reference_energy_drift": reference_drift,
+                "reference_energy_drift": reference_energy_drift,
+                "reference_invariant_drift": reference_invariant_drift,
             }
         )
     return rows
@@ -264,7 +285,11 @@ def _gnlse_rows(steps: tuple[int, ...], *, generalized: bool) -> list[dict[str, 
 
 def _write_rows(rows: list[dict[str, Any]], output_path: Path) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    fields = [*CSV_FIELDS, "reference_energy_drift"]
+    fields = [
+        *CSV_FIELDS,
+        "reference_energy_drift",
+        "reference_invariant_drift",
+    ]
     with output_path.open("w", newline="", encoding="utf-8") as stream:
         writer = csv.DictWriter(stream, fieldnames=fields, extrasaction="ignore")
         writer.writeheader()

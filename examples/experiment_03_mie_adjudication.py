@@ -1,12 +1,11 @@
-"""Experiment 03 - Mie adjudication with an optional medium-default check.
+"""Experiment 03 - Mie adjudication with an explicit medium check.
 
-The experiment always evaluates the independent reference series. It compares
-that reference with each Mie library that is importable in the current
-environment. When PyMieScatt is available, it also demonstrates that omitting
-``nMedium`` asks a different physical question from an explicit vacuum-medium
-call. The script prints measured discrepancies; it does not assume that every
-optional engine is installed or that all implementations agree at machine
-precision.
+The experiment always evaluates the author-constructed reference series in the
+evaluated source tree. It compares that reference with each Mie library that is importable in the current
+environment. It also demonstrates that otherwise identical vacuum and air
+queries are different physical questions. The script prints measured
+discrepancies; it does not assume that every optional engine is installed or
+that all implementations agree at machine precision.
 
 Run:  python -m optcon.examples.experiment_03_mie_adjudication
 """
@@ -29,42 +28,33 @@ def _relative(value: float, reference: float) -> float:
     return abs(value - reference) / scale if scale else 0.0
 
 
-def library_default_gap():
-    """What the two libraries report when each is called with its own defaults."""
-    print("\n=== as called with each library's own defaults ===")
-    reference = reference_mie.mie_efficiencies_reference(
-        MOLAR_M, 200.0, WAVELENGTH_NM
+def explicit_medium_gap():
+    """Compare two stated media without relying on an upstream default."""
+    print("\n=== explicit vacuum and air queries ===")
+    vacuum = reference_mie.mie_efficiencies_reference(
+        MOLAR_M, 200.0, WAVELENGTH_NM, n_env=1.0
+    )["Qext"]
+    air = reference_mie.mie_efficiencies_reference(
+        MOLAR_M, 200.0, WAVELENGTH_NM, n_env=1.00027316
     )["Qext"]
     if not is_available("PyMieScatt"):
         print("PyMieScatt unavailable in this environment")
         return
-    try:
-        import PyMieScatt
-
-        default = float(
-            PyMieScatt.MieQ(MOLAR_M, WAVELENGTH_NM, 200.0, asDict=True)["Qext"]
-        )
-        stated = float(
-            PyMieScatt.MieQ(
-                MOLAR_M, WAVELENGTH_NM, 200.0, nMedium=1.0, asDict=True
-            )["Qext"]
-        )
-    except ImportError:
-        print("PyMieScatt unavailable")
-        return
-    print(f"independent reference                 : {reference:.12f}")
+    measured_air = mie_efficiencies(
+        m=MOLAR_M,
+        diameter=q(200.0, "nm"),
+        wavelength=q(WAVELENGTH_NM, "nm"),
+        medium_index=1.00027316,
+        engine="PyMieScatt",
+    )["Qext"].value
+    print(f"vacuum reference                      : {vacuum:.12f}")
+    print(f"air reference                         : {air:.12f}")
     print(
-        f"PyMieScatt as shipped                 : {default:.12f}   "
-        f"deviation {abs(default - reference) / reference:.3e}"
+        f"PyMieScatt with explicit air medium   : {measured_air:.12f}   "
+        f"deviation from air reference {abs(measured_air - air) / air:.3e}"
     )
     print(
-        f"PyMieScatt with nMedium=1.0           : {stated:.12f}   "
-        f"deviation {abs(stated - reference) / reference:.3e}"
-    )
-    print(
-        "\nPyMieScatt.MieQ defaults to nMedium=1.00027316 (air) and silently\n"
-        "scales the refractive index by it. The library default, not the\n"
-        "algorithm, is what experiment 02 was measuring."
+        f"air-vacuum physical-query difference  : {abs(air - vacuum) / vacuum:.3e}"
     )
 
 
@@ -145,7 +135,7 @@ def convergence_check() -> None:
 
 
 def main() -> int:
-    library_default_gap()
+    explicit_medium_gap()
     worst = adjudication_table()
     convergence_check()
 
@@ -157,7 +147,7 @@ def main() -> int:
         print(
             "\nThe adapter states the surrounding medium explicitly for every engine.\n"
             "The values above are the evidence for this run; unavailable optional\n"
-            "libraries are not counted as agreement. A library default may be valid\n"
+            "libraries are not counted as agreement. A medium convention may be valid\n"
             "for its intended application while still changing the physical query,\n"
             "which is why the medium belongs in the adapter contract."
         )

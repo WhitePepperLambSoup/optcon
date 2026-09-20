@@ -116,6 +116,82 @@ def test_dot_test_uses_the_complex_hermitian_inner_product():
     assert report["ok"] is True
 
 
+def test_dot_test_uses_the_real_inner_product_for_real_parameters_and_complex_fields():
+    matrix = np.array([[1.0 + 2.0j], [-0.5 + 0.25j]])
+
+    def forward(x):
+        return matrix @ x
+
+    def real_adjoint(y):
+        return np.real(matrix.conj().T @ y)
+
+    report = dot_test(forward, real_adjoint, np.array([0.3]), seed=7)
+
+    assert report["ok"] is True
+    assert report["inner_product"] == "real"
+    assert np.isrealobj(report["left"])
+    assert np.isrealobj(report["right"])
+
+
+def test_dot_test_rejects_a_complex_cotangent_for_a_real_parameter_space():
+    matrix = np.array([[1.0 + 2.0j], [-0.5 + 0.25j]])
+
+    def forward(x):
+        return matrix @ x
+
+    def complex_adjoint(y):
+        return matrix.conj().T @ y
+
+    report = dot_test(forward, complex_adjoint, np.array([0.3]), seed=7)
+
+    assert report["ok"] is False
+    assert report["adjoint_domain_error"] > 0.0
+
+
+def test_assert_adjoint_names_a_real_domain_cotangent_error():
+    matrix = np.array([[1.0 + 2.0j], [-0.5 + 0.25j]])
+
+    def forward(x):
+        return matrix @ x
+
+    def complex_adjoint(y):
+        return matrix.conj().T @ y
+
+    with pytest.raises(
+        AdjointCheckFailure,
+        match="complex cotangent.*real parameter space",
+    ):
+        assert_adjoint(
+            forward,
+            complex_adjoint,
+            np.array([0.3]),
+            seed=7,
+            name="real-parameter adjoint",
+        )
+
+
+def test_assert_adjoint_reports_the_real_dual_pairing_on_pairing_failure():
+    matrix = np.array([[1.0 + 2.0j], [-0.5 + 0.25j]])
+
+    def forward(x):
+        return matrix @ x
+
+    def incorrectly_scaled_real_adjoint(y):
+        return 0.5 * np.real(matrix.conj().T @ y)
+
+    with pytest.raises(
+        AdjointCheckFailure,
+        match=r"real adjoint test failed.*Re<Jv, w>.*J\*_R",
+    ):
+        assert_adjoint(
+            forward,
+            incorrectly_scaled_real_adjoint,
+            np.array([0.3]),
+            seed=7,
+            name="real-parameter adjoint",
+        )
+
+
 @pytest.mark.parametrize("eps", [0.0, -1.0, float("nan"), float("inf")])
 def test_dot_test_rejects_invalid_step_sizes(eps):
     def forward(x):

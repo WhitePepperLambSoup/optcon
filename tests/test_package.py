@@ -26,6 +26,7 @@ MODULES = (
     "checks",
     "specs",
     "errors",
+    "evidence",
     "elements",
     "gaussian",
     "fresnel",
@@ -62,6 +63,8 @@ def test_every_documented_module_imports():
 
 def test_reproducibility_entry_points_are_importable():
     importlib.import_module("optcon.examples.experiment_05_cavity_thermal_tolerance")
+    importlib.import_module("optcon.examples.experiment_06_mie_decision_impact")
+    importlib.import_module("optcon.examples.experiment_07_thinfilm_decision_impact")
     importlib.import_module("optcon.benchmarks.run_all")
 
 

@@ -34,3 +34,12 @@ class ContractViolation(OptConError):
 
 class AdjointCheckFailure(ContractViolation):
     """A supplied adjoint/derivative disagrees with finite differences."""
+
+
+class EvidenceGateFailure(ContractViolation):
+    """A numerical result lacks evidence required for a declared decision."""
+
+    def __init__(self, failed_requirements: tuple[str, ...]):
+        self.failed_requirements = tuple(failed_requirements)
+        names = ", ".join(self.failed_requirements)
+        super().__init__(f"decision evidence is incomplete: {names}")

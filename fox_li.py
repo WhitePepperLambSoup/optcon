@@ -13,11 +13,13 @@ infinite apertures (predicting zero diffraction loss), the Fox-Li operator
 captures finite-aperture diffraction clipping, edge diffraction phase shifts,
 transverse mode discrimination, and alignment sensitivity.
 
-Physical invariants checked:
+Representation-level contracts checked:
 * Passivity: diffraction is strictly lossy; the operator satisfies
   sigma_max(K) <= 1, and every mode eigenvalue satisfies |gamma| <= 1.
-* Reciprocity: for symmetric resonators (g1 = g2) without mirror tilt,
-  the Fredholm kernel satisfies K(x1, x2) = K(x2, x1).
+* Transpose symmetry: for symmetric resonators (g1 = g2) without mirror
+  tilt, the chosen one-way Fredholm representation satisfies
+  K(x1, x2) = K(x2, x1).  Failure of this representation-specific identity
+  under tilt is not a claim that Lorentz reciprocity is physically broken.
 """
 
 from __future__ import annotations
@@ -262,7 +264,8 @@ def solve_fox_li_modes(
     azimuthal_order : int, default 0
         Azimuthal mode index m (for circular geometry).
     check_contracts : bool, default True
-        If True, validates passivity and reciprocity contracts on the operator.
+        If True, validates passivity and, for a symmetric untilted cavity,
+        the representation-specific transpose-symmetry contract.
 
     Returns
     -------
@@ -277,7 +280,8 @@ def solve_fox_li_modes(
     if check_contracts:
         # Passivity: diffraction cannot amplify energy
         assert_passive(k_sym, rtol=1e-5, atol=1e-5, name="fox_li_operator")
-        # Reciprocity: symmetric cavity without tilt is reciprocal
+        # In this matched one-way representation, the symmetric untilted
+        # cavity must satisfy the transpose-symmetry form of reciprocity.
         if resonator.g1 == resonator.g2 and (
             resonator.tilt is None or _angle_of(resonator.tilt, "") == 0.0
         ):

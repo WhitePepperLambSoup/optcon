@@ -3,7 +3,8 @@
 ## The problem
 
 Computational optics, and the machine-learning methods now built on top of it,
-share four failure modes that no current toolchain catches:
+share recurring failure modes that finite-value smoke tests and dimensional
+checking alone do not reliably catch:
 
 1. **Dimensions live in identifier names.** `L1_mm`, `wavelength_nm` and
    `pump_radius_um` are all `float`. Nothing stops `wavelength_nm + L1_mm`
@@ -18,9 +19,10 @@ share four failure modes that no current toolchain catches:
    smooth, plausible and wrong; training still "works", just toward the wrong
    objective.
 
-These are not library bugs. They are *representation* problems: the objects
-the field computes with do not carry the information needed to detect the
-mistakes. That is the gap optcon fills.
+These are not necessarily failures of the underlying numerical solver. They
+are *representation* problems: an interface may discard information needed to
+distinguish physically different values or to verify a declared operator.
+`optcon` supplies that information at selected computational-optics boundaries.
 
 ## What optcon is, and what it is not
 
@@ -67,8 +69,10 @@ Two deliberate departures from SI:
   orders, division subtracts, `sqrt` halves an even order, and addition or
   comparison requires equal orders.
 
-The amplitude order is the part with no counterpart in pint, unyt or
-astropy.units, and it is what catches the square-root class of error.
+Amplitude order is domain-specific provenance beyond ordinary dimensional
+equality. In `optcon` it catches the field-versus-power square-root class of
+error; no priority claim is made over other ways of representing quantity
+kind or physical provenance.
 
 ### `checks`
 
@@ -76,15 +80,28 @@ Physics invariants become checkable claims rather than comments:
 
 * `assert_unitary` - lossless
 * `assert_passive` - no net gain
-* `assert_reciprocal` - symmetric in the amplitude basis
+* `assert_reciprocal` - symmetric in a declared matched reciprocal amplitude
+  basis; asymmetric bases can invalidate this matrix test without breaking
+  physical reciprocity
 * `check_gradient`, `assert_adjoint` - a supplied derivative or backward
-  operator checked against central differences and the
-  `<Jv, w> == <v, J^H w>` dot-product identity. This verifies the tested
-  discrete operator and probes; it is not a proof of a complete autodiff
-  system.
+  operator checked against central differences. Complex-linear maps use
+  `<Jv, w> == <v, J^H w>`. Real parameters mapped to complex fields use the
+  real dual pairing `Re(<Jv, w>) == <v, J*_R w>` and require a real returned
+  cotangent. These tests verify the supplied discrete operator and probes;
+  they are not a proof of a complete autodiff system.
 
-This is the scikit-rf treatment of passivity, extended to optics and combined
-with discrete derivative and adjoint verification.
+The matrix predicates are related to checks exposed by scikit-rf. Here they
+are made conditional on an explicitly declared optical representation and are
+combined with discrete derivative and adjoint verification.
+
+There are direct optical precedents for the individual mechanisms. POPPY uses
+physical quantities at Fresnel boundaries; prysm applies dot-product transpose
+tests to ray-tracing adjoints; Meep and Tidy3D compare adjoint gradients with
+finite differences; and Tidy3D's EME path exposes passive or unitary interface
+constraints and power diagnostics. `optcon` does not claim those mechanisms
+individually. Its design goal is to make units, optical provenance, declared
+operator properties, adjoint domains, solver invariants, and cross-engine
+conventions compose at the same boundaries.
 
 ### `specs`
 
@@ -120,17 +137,19 @@ when a shared observable and importable adapter exist, a differential test.
 
 ## Methodology: differential testing
 
-Independent implementations of the same physics are the cheapest source of
-ground truth a computational field has, and almost nobody uses them.
-`compare_across_engines` runs one physical query through several engines,
-normalises the outputs through the unit layer, and reports agreement against a
-declared tolerance. `assert_engines_agree` is the CI-gate form.
+Differential testing and numerical model intercomparison are established
+verification techniques. `compare_across_engines` applies them to a declared
+optical query: it runs the query through several engines, normalises a shared
+observable through the unit layer, and reports agreement against a declared
+tolerance. `assert_engines_agree` is the CI-gate form.
 
-Three kinds of reference are used, in increasing order of strength:
+Three kinds of reference are used. Their evidential strength depends on the
+independence of the implementations and on whether the physical conventions
+have actually been harmonised:
 
 1. **another library** - two independent routes to the same number;
-2. **an independent implementation written here** - used when two libraries
-   disagree and a tie must be broken;
+2. **an author-constructed implementation in this tree** - useful when two
+   libraries disagree, but not equivalent to a third-party reference;
 3. **a closed form** - an exact answer, which needs no adjudication at all.
 
 ## Findings
@@ -139,11 +158,11 @@ The current evidence is intentionally split into measurements and conditional ex
 
 ### Current Mie measurement
 
-The current figure-generation run compares `miepython` and PyMieScatt, each with the surrounding medium stated explicitly, against the independent `optcon_reference` series over five diameters. The maximum relative discrepancies are `1.77e-10` for `miepython` and `3.06e-7` for PyMieScatt. The same run also measures the PyMieScatt library-default medium convention: its maximum discrepancy is `1.50e-3` over the five points. The adapter uses a narrowly scoped SciPy compatibility alias so the optional PyMieScatt import remains testable on current SciPy releases.
+The current figure-generation run compares `miepython` and PyMieScatt, each with the surrounding medium stated explicitly, against the author-constructed `optcon_reference` series in this source tree over five diameters. The maximum relative discrepancies are `1.77e-10` for `miepython` and `3.06e-7` for PyMieScatt. The same run compares an explicitly stated air-medium query with vacuum; its maximum discrepancy is `9.87e-4` over the five points. The adapter uses a narrowly scoped SciPy compatibility alias so the optional PyMieScatt import remains testable on current SciPy releases. It also normalizes the relative index and in-medium wavelength before calling PyMieScatt with `nMedium=1`, avoiding the different wavelength-scaling behavior found in source and wheel artifacts marked `1.8.1.1`.
 
 ### Current beam measurement
 
-The LightPipes comparison uses a 1-mm waist, 1064-nm wavelength, 20-mm window, and a distance of one Rayleigh range for the resolution sweep. The spectral `Forvard` result is within about `6.52e-9` relative error at `z=zR`. The convolution `Fresnel` result is about 6.9% wide at that point and remains 6.67--7.07% wide over 256--4096 samples. This is a result for the stated finite-window configuration, not a universal statement about every LightPipes setup.
+The LightPipes comparison uses a 1-mm waist, 1064-nm wavelength, 20-mm window, and a distance of one Rayleigh range for the resolution sweep. The spectral `Forvard` result is within about `6.52e-11` relative error at `z=zR`. The convolution `Fresnel` result is about 6.9% wide at that point and remains 6.67--7.07% wide over 256--4096 samples. This is a result for the stated finite-window configuration, not a universal statement about every LightPipes setup.
 
 ### Registry status
 

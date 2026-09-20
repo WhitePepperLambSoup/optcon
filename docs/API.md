@@ -54,10 +54,10 @@ Physical invariant contracts for optical operators.
 - `assert_adjoint` - Declare ``adjoint`` the adjoint of ``forward``; raise if it is not.
 - `assert_gradient_matches` - Declare a gradient correct; raise if it is not the real derivative.
 - `assert_passive` - Declare an operator gain-free; raise if it amplifies.
-- `assert_reciprocal` - Declare a travelling-wave operator reciprocal; raise if it is not.
+- `assert_reciprocal` - Assert matrix symmetry in the caller's matched reciprocal basis.
 - `assert_unitary` - Declare an operator lossless; raise if it is not.
 - `check_gradient` - Compare a supplied gradient against central differences.
-- `dot_test` - The classic complex inner-product adjoint check.
+- `dot_test` - Check a supplied adjoint with the inner product of the input space.
 - `finite_difference_gradient` - Central-difference gradient of a scalar function.
 - `finite_difference_jacobian` - Central-difference Jacobian of a vector-valued function.
 - `gain_above_unity` - How far the largest singular value exceeds unity (0 for passive).
@@ -100,6 +100,14 @@ Ray-transfer (ABCD) matrices for the elements an optical bench is built from.
 - `stability` - Half the trace, ``(A + D)/2``.
 - `stability_status` - ``"stable"``, ``"marginal"`` or ``"unstable"``, for reporting.
 - `thin_lens` - An ideal thin lens: ``[[1, 0], [-1/f, 1]]``.
+
+## `optcon.evidence`
+
+Evidence requirements for promoting numerical results to decisions.
+
+- `evaluate_claim` - Evaluate a claim while retaining its audit metadata and evidence trace.
+- `evaluate_evidence` - Evaluate whether ``record`` satisfies the required evidence categories.
+- `require_decision_ready` - Return a passing result or raise a diagnostic contract failure.
 
 ## `optcon.fiber`
 
@@ -337,10 +345,10 @@ Thermal lensing and Gaussian aperture truncation.
 Thin film design: quarter-wave stacks, anti-reflection coatings, Bragg mirrors.
 
 - `anti_reflection_thickness` - Quarter-wave thickness ``lambda / (4 n)``.
-- `bragg_reflectance` - Peak reflectance of a quarter-wave stack of ``pairs`` high/low bilayers.
+- `bragg_reflectance` - Peak reflectance of a quarter-wave ``(HL)^N H`` stack.
 - `ideal_anti_reflection_index` - The single-layer index that nulls reflection: ``sqrt(n0 * ns)``.
 - `optical_thickness` - ``n t``: the thickness that matters for phase.
-- `quarter_wave_stack_reflectance` - Convenience wrapper for a stack incident from air.
+- `quarter_wave_stack_reflectance` - Convenience wrapper for an air-incident ``(HL)^N H`` stack.
 - `single_layer_reflectance` - Reflectance of one film on a substrate, at normal incidence.
 
 ## `optcon.units`
@@ -372,4 +380,4 @@ Guided modes of a symmetric slab waveguide.
 
 ---
 
-216 public functions across 33 modules.
+219 public functions across 34 modules.

@@ -9,12 +9,11 @@ silent trap when it is not:
 2. **Absorption** - miepython returns ``(qext, qsca, qback, g)``; absorption
    is not in its return value at all and has to come out of the extinction
    budget.  PyMieScatt reports it directly.
-3. **The surrounding medium** - PyMieScatt's ``nMedium`` defaults to
-   ``1.00027316`` (air), so the same call silently answers a slightly
-   different question than the same call to miepython.  This adapter states
-   the medium explicitly for every engine, uses the vacuum-wavelength
-   convention throughout, and converts PyMieScatt's in-medium wavelength on
-   the way in.
+3. **The surrounding medium** - released PyMieScatt artifacts disagree about
+   whether ``MieQ`` converts the wavelength when ``nMedium`` is supplied.
+   This adapter avoids that unstable boundary: it converts the refractive
+   index and vacuum wavelength to their in-medium values itself, then calls
+   PyMieScatt with ``nMedium=1``.
 """
 
 from __future__ import annotations
@@ -60,12 +59,16 @@ def _pymiescatt(
 ) -> dict[str, float]:
     import PyMieScatt
 
-    # PyMieScatt wants the wavelength *in the medium* and rescales m itself,
-    # so the vacuum wavelength is divided here.  nMedium is always passed
-    # explicitly: relying on the library default would answer a question
-    # about air rather than about vacuum.
+    # PyMieScatt source and wheel artifacts carrying version 1.8.1.1 differ:
+    # one scales only m by nMedium, while the other scales m and wavelength.
+    # Normalise both physical inputs here and pass nMedium=1 so either artifact
+    # evaluates the same size parameter and relative refractive index.
     result = PyMieScatt.MieQ(
-        complex(m), wavelength / medium, diameter, nMedium=medium, asDict=True
+        complex(m) / medium,
+        wavelength / medium,
+        diameter,
+        nMedium=1.0,
+        asDict=True,
     )
     return {key: float(result[key]) for key in _KEYS}
 
@@ -102,9 +105,7 @@ def mie_efficiencies(
 
     ``wavelength`` is the **vacuum** wavelength and ``m`` is the index
     relative to vacuum, whatever the surrounding medium is.  ``medium_index``
-    is stated explicitly rather than defaulted by a library, because one of
-    the engines defaults it to air and the resulting 0.15% offset is
-    invisible otherwise.
+    is always part of the adapter query; no external-library default is used.
     """
     spec = require_available(engine, "mie")
     implementation = _IMPLEMENTATIONS.get(engine)

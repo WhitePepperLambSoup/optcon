@@ -16,6 +16,56 @@ if _repo_parent not in sys.path:
     sys.path.insert(0, _repo_parent)
 
 
+STAGES = (
+    ("End-to-End Laser Cavity Design Workflow", "optcon.examples.design_a_laser"),
+    (
+        "Experiment 01: Physical Invariant Guardrails & Bug Injection",
+        "optcon.examples.experiment_01_guard_bench",
+    ),
+    (
+        "Semantic-contract fault-injection corpus",
+        "optcon.benchmarks.fault_injection",
+    ),
+    (
+        "Frozen held-out mutation campaign",
+        "optcon.benchmarks.heldout_mutations",
+    ),
+    (
+        "Multi-parameter adjoint stress sweep",
+        "optcon.benchmarks.adjoint_stress",
+    ),
+    (
+        "Experiment 02: Cross-Engine Differential Comparison",
+        "optcon.examples.experiment_02_cross_engine",
+    ),
+    (
+        "Experiment 03: Mie Scattering Matched-Reference Adjudication",
+        "optcon.examples.experiment_03_mie_adjudication",
+    ),
+    (
+        "Thin-film closed-form and TMM adjudication",
+        "optcon.benchmarks.thinfilm_adjudication",
+    ),
+    (
+        "Experiment 07: Thin-film stack decision impact",
+        "optcon.examples.experiment_07_thinfilm_decision_impact",
+    ),
+    (
+        "Experiment 04: Gaussian Beam Propagation vs Analytical Closed Form",
+        "optcon.examples.experiment_04_beam_adjudication",
+    ),
+    (
+        "Experiment 05: Laser Cavity Alignment & Thermal Tolerance Budget",
+        "optcon.examples.experiment_05_cavity_thermal_tolerance",
+    ),
+    (
+        "Solver discretization-convergence measurements",
+        "optcon.benchmarks.convergence",
+    ),
+    ("Performance & Allocation Benchmarks", "optcon.benchmarks.bench"),
+)
+
+
 def run_section(title: str, module_path: str) -> bool:
     print("\n" + "=" * 70)
     print(f"  RUNNING: {title}")
@@ -43,37 +93,8 @@ def main() -> int:
     print("  optcon: Complete Reproducibility & Benchmark Suite")
     print("*" * 70)
 
-    stages = [
-        ("End-to-End Laser Cavity Design Workflow", "optcon.examples.design_a_laser"),
-        (
-            "Experiment 01: Physical Invariant Guardrails & Bug Injection",
-            "optcon.examples.experiment_01_guard_bench",
-        ),
-        (
-            "Experiment 02: Cross-Engine Differential Comparison",
-            "optcon.examples.experiment_02_cross_engine",
-        ),
-        (
-            "Experiment 03: Mie Scattering Independent Reference Adjudication",
-            "optcon.examples.experiment_03_mie_adjudication",
-        ),
-        (
-            "Experiment 04: Gaussian Beam Propagation vs Analytical Closed Form",
-            "optcon.examples.experiment_04_beam_adjudication",
-        ),
-        (
-            "Experiment 05: Laser Cavity Alignment & Thermal Tolerance Budget",
-            "optcon.examples.experiment_05_cavity_thermal_tolerance",
-        ),
-        (
-            "Solver discretization-convergence measurements",
-            "optcon.benchmarks.convergence",
-        ),
-        ("Performance & Allocation Benchmarks", "optcon.benchmarks.bench"),
-    ]
-
     results = []
-    for title, module_path in stages:
+    for title, module_path in STAGES:
         ok = run_section(title, module_path)
         results.append((title, ok))
 

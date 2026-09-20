@@ -18,19 +18,35 @@ Run:
 from __future__ import annotations
 
 import argparse
+import csv
 import math
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Annotated, Any, Iterable, Mapping
 
 import numpy as np
 from matplotlib.figure import Figure
 
-from optcon import Quantity, q, unit
+from optcon import (
+    AMPLITUDE,
+    POWER,
+    EvidenceClaim,
+    EvidenceRecord,
+    EvidenceRequirements,
+    Quantity,
+    amplitude_ratio,
+    evaluate_claim,
+    power_ratio,
+    q,
+    unit,
+)
 from optcon.cavity import finesse, free_spectral_range, g_parameters
-from optcon.elements import compose, curved_mirror, free_space, thin_lens
+from optcon.elements import TransferMatrix, compose, curved_mirror, free_space
+from optcon.gaussian import beam_radius, mode_matching_efficiency, self_consistent_mode
 from optcon.modes import decompose, hermite_gauss
 from optcon.propagation import Field
+from optcon.specs import checked
 
 
 @dataclass(frozen=True)
@@ -39,9 +55,28 @@ class ThermalPoint:
 
     diopter_d_m: float
     stability_product: float
-    waist_um: float
+    beam_radius_um: float
     coupling: float
     stable: bool
+    q_m: complex = complex(float("nan"), float("nan"))
+
+
+def _tilted_mode_coupling(
+    cavity_q_m: complex,
+    *,
+    nominal_waist_m: float,
+    wavelength_m: float,
+    tilt_rad: float | np.ndarray = 0.0,
+) -> np.ndarray:
+    """Same-plane Gaussian overlap, including curvature and one-axis tilt."""
+    k = 2.0 * math.pi / wavelength_m
+    inverse_q = 1.0 / cavity_q_m
+    radius_sq = -wavelength_m / (math.pi * inverse_q.imag)
+    exponent = 1.0 / nominal_waist_m**2 + 1.0 / radius_sq - 0.5j * k * inverse_q.real
+    nominal_q = q(1j * math.pi * nominal_waist_m**2 / wavelength_m, "m")
+    aligned = mode_matching_efficiency(nominal_q, q(cavity_q_m, "m"))
+    attenuation = np.exp(-0.5 * (k * np.asarray(tilt_rad)) ** 2 * (1.0 / exponent).real)
+    return np.asarray(np.clip(aligned * attenuation, 0.0, 1.0))
 
 
 def _thermal_point(
@@ -53,29 +88,40 @@ def _thermal_point(
     nominal_waist_m: float,
 ) -> ThermalPoint:
     """Evaluate one thermal lens directly from its round-trip ABCD matrix."""
-    focal_length_m = 1e9 if abs(diopter_d_m) < 1e-4 else 1.0 / diopter_d_m
     half_space = free_space(q(length_m / 2.0, "m"))
     mirror = curved_mirror(radius_c)
-    lens = thin_lens(q(focal_length_m, "m"))
-    round_trip = compose(half_space, mirror, half_space, lens, half_space, mirror, half_space).matrix
+    lens = TransferMatrix(
+        np.array([[1.0, 0.0], [-diopter_d_m, 1.0]]), unit("m"), "thermal_lens"
+    )
+    # Reference plane: immediately after the midpoint lens. Each half-trip
+    # returns through that lens, so a full round trip contains two crossings.
+    half_trip = compose(half_space, mirror, half_space, lens)
+    round_trip = (half_trip**2).matrix
 
     determinant = np.linalg.det(round_trip)
     if abs(determinant - 1.0) >= 1e-6:
-        raise AssertionError(f"Symplectic energy violation: det(M) = {determinant}")
+        raise AssertionError(f"Ray-transfer determinant violation: det(M) = {determinant}")
 
     a = float(round_trip[0, 0])
-    b = float(round_trip[0, 1])
     d_elem = float(round_trip[1, 1])
     half_trace = (a + d_elem) / 2.0
     stability_product = (half_trace + 1.0) / 2.0
-    stable = abs(half_trace) < 0.999 and abs(b) > 1e-9 and stability_product > 0.0
+    # The identical half-trips select the physical mode even when the full
+    # matrix is -I (the confocal degeneracy).
+    stable = abs(float(np.trace(half_trip.matrix)) / 2.0) < 1.0
     if not stable:
         return ThermalPoint(diopter_d_m, stability_product, float("nan"), 0.0, False)
 
-    waist_sq = (wavelength_m * abs(b)) / (math.pi * math.sqrt(1.0 - half_trace**2))
-    waist_m = math.sqrt(waist_sq)
-    coupling = 4.0 / ((nominal_waist_m / waist_m + waist_m / nominal_waist_m) ** 2)
-    return ThermalPoint(diopter_d_m, stability_product, waist_m * 1e6, coupling, True)
+    cavity_q = self_consistent_mode(half_trip)
+    radius_m = beam_radius(cavity_q, q(wavelength_m, "m")).to_value("m")
+    coupling = float(_tilted_mode_coupling(
+        complex(cavity_q.value),
+        nominal_waist_m=nominal_waist_m,
+        wavelength_m=wavelength_m,
+    ))
+    return ThermalPoint(
+        diopter_d_m, stability_product, radius_m * 1e6, coupling, True, complex(cavity_q.value)
+    )
 
 
 def _interpolate_crossing(
@@ -100,6 +146,202 @@ def _downward_threshold(axis: np.ndarray, values: np.ndarray, level: float) -> f
                 level,
             )
     return float(axis[-1])
+
+
+@checked
+def _field_overlap_to_power(
+    field_overlap: Annotated[float, "1", AMPLITUDE],
+) -> Annotated[float, "1", POWER]:
+    """Convert a field overlap to a power coupling with provenance checked."""
+    return field_overlap * field_overlap
+
+
+def run_decision_impact(output_path: str | Path) -> dict[str, Any]:
+    """Measure whether provenance checking blocks an invalid tolerance budget.
+
+    The valid workflow converts a field overlap to a power coupling.  The
+    fault workflow passes the already-squared power coupling into a boundary
+    that requires a field amplitude.  A bare-number implementation would
+    square it a second time and report a smaller, invalid tilt budget.  The
+    contract rejects that path before the budget is promoted to a result.
+    """
+    wavelength_m = 1.064e-6
+    length_m = 0.10
+    radius_c = q(200.0, "mm")
+    nominal_waist_m = math.sqrt(
+        (wavelength_m * length_m / (2.0 * math.pi))
+        * math.sqrt((2.0 * 0.20 - length_m) / length_m)
+    )
+    tilts_urad = np.linspace(0.0, 3000.0, 31)
+    cavity_point = _thermal_point(
+        0.0,
+        length_m=length_m,
+        radius_c=radius_c,
+        wavelength_m=wavelength_m,
+        nominal_waist_m=nominal_waist_m,
+    )
+    power_coupling = np.asarray(
+        _tilted_mode_coupling(
+            cavity_point.q_m,
+            nominal_waist_m=nominal_waist_m,
+            wavelength_m=wavelength_m,
+            tilt_rad=tilts_urad * 1e-6,
+        ),
+        dtype=float,
+    )
+    field_overlap = np.sqrt(power_coupling)
+
+    correct_power = np.asarray(
+        [
+            float(_field_overlap_to_power(amplitude_ratio(float(value))).to_value("1"))
+            for value in field_overlap
+        ],
+        dtype=float,
+    )
+    correct_budget = _downward_threshold(tilts_urad, correct_power, level=0.9)
+
+    fault_contract = True
+    diagnostic_type = ""
+    diagnostic_message = ""
+    try:
+        # This is the silent mistake: a power coefficient is supplied where a
+        # field overlap is required.  It is finite and numerically plausible.
+        _field_overlap_to_power(power_ratio(float(power_coupling[1])))
+    except Exception as error:  # noqa: BLE001 - record the contract diagnostic
+        fault_contract = False
+        diagnostic_type = type(error).__name__
+        diagnostic_message = str(error).splitlines()[0]
+
+    evidence_claim = EvidenceClaim(
+        claim_id="fabry-perot-tilt-budget",
+        representation="field overlap converted to power coupling",
+        observable="90 percent TEM00 tilt threshold",
+        tolerance="semantic contract, finite numerical sweep, and stated paraxial scope",
+        diagnostic="field-versus-power provenance contract",
+        evidence_source="local contract, numerical sweep, and provenance record",
+        scope="scalar paraxial symmetric Fabry-Perot cavity",
+        requirements=EvidenceRequirements(),
+    )
+    correct_gate = evaluate_claim(
+        evidence_claim,
+        EvidenceRecord(
+            semantic=True,
+            numerical=True,
+            independent_reference=False,
+            provenance=True,
+            scope=True,
+        ),
+    )
+    fault_gate = evaluate_claim(
+        evidence_claim,
+        EvidenceRecord(
+            semantic=fault_contract,
+            numerical=True,
+            independent_reference=False,
+            provenance=True,
+            scope=True,
+        ),
+    )
+
+    unchecked_fault_power = power_coupling**2
+    unchecked_fault_budget = _downward_threshold(
+        tilts_urad,
+        unchecked_fault_power,
+        level=0.9,
+    )
+    rows = [
+        {
+            "case_id": "correct-field-to-power",
+            "claim_id": evidence_claim.claim_id,
+            "representation": evidence_claim.representation,
+            "observable": evidence_claim.observable,
+            "tolerance": evidence_claim.tolerance,
+            "diagnostic": evidence_claim.diagnostic,
+            "evidence_source": evidence_claim.evidence_source,
+            "claim_scope": evidence_claim.scope,
+            "contract_status": "accepted",
+            "reported_budget_urad": f"{correct_budget:.12g}",
+            "unchecked_candidate_budget_urad": "",
+            "diagnostic_type": "",
+            "diagnostic_message": "",
+            "semantic_evidence": True,
+            "numerical_evidence": True,
+            "independent_reference_evidence": False,
+            "provenance_evidence": True,
+            "scope_evidence": True,
+            "status": correct_gate.status,
+            "required_evidence": ";".join(correct_gate.required_categories),
+            "available_evidence": ";".join(correct_gate.available_categories),
+            "decision_ready": correct_gate.decision_ready,
+            "failed_requirements": ";".join(correct_gate.failed_requirements),
+        },
+        {
+            "case_id": "fault-power-used-as-field",
+            "claim_id": evidence_claim.claim_id,
+            "representation": evidence_claim.representation,
+            "observable": evidence_claim.observable,
+            "tolerance": evidence_claim.tolerance,
+            "diagnostic": evidence_claim.diagnostic,
+            "evidence_source": evidence_claim.evidence_source,
+            "claim_scope": evidence_claim.scope,
+            "contract_status": "rejected",
+            "reported_budget_urad": "",
+            "unchecked_candidate_budget_urad": f"{unchecked_fault_budget:.12g}",
+            "diagnostic_type": diagnostic_type,
+            "diagnostic_message": diagnostic_message,
+            "semantic_evidence": fault_contract,
+            "numerical_evidence": True,
+            "independent_reference_evidence": False,
+            "provenance_evidence": True,
+            "scope_evidence": True,
+            "status": fault_gate.status,
+            "required_evidence": ";".join(fault_gate.required_categories),
+            "available_evidence": ";".join(fault_gate.available_categories),
+            "decision_ready": fault_gate.decision_ready,
+            "failed_requirements": ";".join(fault_gate.failed_requirements),
+        },
+    ]
+    _write_csv(
+        Path(output_path),
+        rows,
+        (
+            "case_id",
+            "claim_id",
+            "representation",
+            "observable",
+            "tolerance",
+            "diagnostic",
+            "evidence_source",
+            "claim_scope",
+            "contract_status",
+            "reported_budget_urad",
+            "unchecked_candidate_budget_urad",
+            "diagnostic_type",
+            "diagnostic_message",
+            "semantic_evidence",
+            "numerical_evidence",
+            "independent_reference_evidence",
+            "provenance_evidence",
+            "scope_evidence",
+            "status",
+            "required_evidence",
+            "available_evidence",
+            "decision_ready",
+            "failed_requirements",
+        ),
+    )
+    return {
+        "correct_contract": True,
+        "correct_budget_reported": True,
+        "correct_budget_urad": correct_budget,
+        "fault_contract": fault_contract,
+        "fault_budget_reported": False,
+        "fault_unchecked_candidate_budget_urad": unchecked_fault_budget,
+        "fault_diagnostic_type": diagnostic_type,
+        "fault_diagnostic_message": diagnostic_message,
+        "correct_decision_ready": correct_gate.decision_ready,
+        "fault_decision_ready": fault_gate.decision_ready,
+    }
 
 
 def _thermal_thresholds(
@@ -153,7 +395,34 @@ def _resolve_figures_dir(output_dir: str | Path | None) -> Path:
     return Path.cwd() / "optcon-artifacts" / "figures"
 
 
-def run_experiment(output_dir: str | Path | None = None) -> dict[str, float]:
+def _resolve_data_dir(
+    figures_dir: Path, data_dir: str | Path | None
+) -> Path:
+    """Choose the directory for row-level data behind the figure."""
+    if data_dir is not None:
+        return Path(data_dir)
+    return figures_dir.parent / "benchmarks"
+
+
+def _write_csv(
+    path: Path,
+    rows: Iterable[Mapping[str, object]],
+    fieldnames: tuple[str, ...],
+) -> Path:
+    """Write deterministic row-level data used by the cavity figure."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as stream:
+        writer = csv.DictWriter(stream, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+    return path
+
+
+def run_experiment(
+    output_dir: str | Path | None = None,
+    *,
+    data_dir: str | Path | None = None,
+) -> dict[str, float]:
     print("=" * 72)
     print("  Experiment 05: Laser Cavity Alignment & Thermal Tolerance Budget")
     print("=" * 72)
@@ -242,8 +511,8 @@ def run_experiment(output_dir: str | Path | None = None) -> dict[str, float]:
     print(f"  Max discrepancy (numerical projection vs analytical Siegman): {max_tilt_discrepancy:.3e}")
 
     # 3. Thermal Lensing Perturbation Sweep (Diopters D = 1/f_th)
-    print("\n--- Sweeping Thermal Lens Power D_th (-35 to +15 m^-1) ---")
-    diopters = np.linspace(-35.0, 15.0, 51)
+    print("\n--- Sweeping Thermal Lens Power D_th (-35 to +45 m^-1) ---")
+    diopters = np.linspace(-35.0, 45.0, 81)
     thermal_points = [
         _thermal_point(
             float(diopter),
@@ -257,8 +526,8 @@ def run_experiment(output_dir: str | Path | None = None) -> dict[str, float]:
     g_prod_thermal = np.asarray(
         [point.stability_product for point in thermal_points], dtype=float
     )
-    waist_thermal_um = np.asarray(
-        [point.waist_um for point in thermal_points], dtype=float
+    radius_thermal_um = np.asarray(
+        [point.beam_radius_um for point in thermal_points], dtype=float
     )
     coupling_thermal = np.asarray(
         [point.coupling for point in thermal_points], dtype=float
@@ -278,9 +547,61 @@ def run_experiment(output_dir: str | Path | None = None) -> dict[str, float]:
     )
     print(f"  Conservative thermal budget: |D_th| < {thermal_90pct_budget_abs_d_m:.2f} m^-1")
 
-    # 4. Generate Publication-Quality Figure
+    # 4. Generate publication-quality figure and its row-level data.
     figures_dir = _resolve_figures_dir(output_dir)
+    data_dir_path = _resolve_data_dir(figures_dir, data_dir)
     figures_dir.mkdir(parents=True, exist_ok=True)
+
+    tilt_rows = [
+        {
+            "tilt_urad": float(tilt),
+            "tem00_numeric": float(tem00_num),
+            "tem00_analytical": float(tem00_ana),
+            "tem10_numeric": float(tem10_num),
+            "tem10_analytical": float(tem10_ana),
+            "tem20_numeric": float(tem20_num),
+        }
+        for tilt, tem00_num, tem00_ana, tem10_num, tem10_ana, tem20_num in zip(
+            tilts_urad,
+            p_tem00_num,
+            p_tem00_ana,
+            p_tem10_num,
+            p_tem10_ana,
+            p_tem20_num,
+            strict=True,
+        )
+    ]
+    _write_csv(
+        data_dir_path / "cavity_tilt_sweep.csv",
+        tilt_rows,
+        (
+            "tilt_urad",
+            "tem00_numeric",
+            "tem00_analytical",
+            "tem10_numeric",
+            "tem10_analytical",
+            "tem20_numeric",
+        ),
+    )
+
+    thermal_rows = [
+        {
+            "diopter_d_m": float(point.diopter_d_m),
+            "stability_product": float(point.stability_product),
+            "beam_radius_um": float(point.beam_radius_um),
+            "coupling": float(point.coupling),
+            "stable": bool(point.stable),
+            "q_real_m": float(point.q_m.real),
+            "q_imag_m": float(point.q_m.imag),
+        }
+        for point in thermal_points
+    ]
+    _write_csv(
+        data_dir_path / "cavity_thermal_sweep.csv",
+        thermal_rows,
+        ("diopter_d_m", "stability_product", "beam_radius_um", "coupling", "stable", "q_real_m", "q_imag_m"),
+    )
+
     fig_path = figures_dir / "fig4_cavity_tolerance.png"
 
     fig = Figure(figsize=(16, 4.5), dpi=300)
@@ -304,34 +625,92 @@ def run_experiment(output_dir: str | Path | None = None) -> dict[str, float]:
     ax1 = axes[1]
     color1 = "#2b5c8f"
     color2 = "#d95f02"
-    ax1.plot(diopters, g_prod_thermal, color=color1, lw=2, label=r"Stability Product $g_1^* g_2^*$")
-    ax1.axhline(0.0, color="gray", linestyle="--", alpha=0.7, label="Concentric Boundary (0.0)")
-    ax1.axhline(1.0, color="red", linestyle="--", alpha=0.7, label="Flat-Flat Boundary (1.0)")
+    ax1.plot(diopters, g_prod_thermal, color=color1, lw=2)
+    ax1.axhline(0.0, color="gray", linestyle="--", alpha=0.7)
+    ax1.axhline(1.0, color="red", linestyle="--", alpha=0.7)
     ax1.set_xlabel(r"Thermal Lens Power $D_{\mathrm{th}} = 1/f_{\mathrm{th}}$ ($\mathrm{m}^{-1}$)", fontsize=11)
-    ax1.set_ylabel(r"Effective Stability $g_1^* g_2^*$", color=color1, fontsize=11)
+    ax1.set_ylabel(r"Round-trip Stability $(1+h_{\mathrm{rt}})/2$", color=color1, fontsize=11)
     ax1.tick_params(axis="y", labelcolor=color1)
     ax1.set_ylim(-0.1, 1.1)
     ax1.grid(True, linestyle=":", alpha=0.6)
 
     ax1_twin = ax1.twinx()
-    ax1_twin.plot(diopters, waist_thermal_um, color=color2, lw=2, linestyle="-.", label=r"Waist $w_c$ ($\mu\mathrm{m}$)")
-    ax1_twin.set_ylabel(r"Cavity Waist $w_c$ ($\mu\mathrm{m}$)", color=color2, fontsize=11)
+    ax1_twin.plot(diopters, radius_thermal_um, color=color2, lw=2, linestyle="-.", label=r"Midpoint radius $w_c$ ($\mu\mathrm{m}$)")
+    ax1_twin.set_ylabel(r"Midpoint Beam Radius $w_c$ ($\mu\mathrm{m}$)", color=color2, fontsize=11)
     ax1_twin.tick_params(axis="y", labelcolor=color2)
-    ax1.set_title("(b) Stability & Waist vs. Thermal Lens", fontsize=12, fontweight="bold")
+    ax1.set_title("(b) Stability & Radius vs. Thermal Lens", fontsize=12, fontweight="bold")
 
     # Panel (c): 2D Tolerance Map
     ax2 = axes[2]
-    tilt_mesh, d_mesh = np.meshgrid(np.linspace(0.0, 2500.0, 60), np.linspace(-30.0, 10.0, 60))
-    # Combined coupling: eta_tilt * eta_thermal.  Interpolate the same
-    # ABCD-derived thermal sweep used in panel (b), rather than introducing
-    # a second hard-coded approximation for the tolerance map.
-    tilt_loss = np.exp(-((tilt_mesh * 1e-6) / theta_div_rad) ** 2)
-    thermal_loss_mesh = np.interp(
-        d_mesh.ravel(),
-        diopters,
-        coupling_thermal,
-    ).reshape(d_mesh.shape)
-    eta_total = tilt_loss * np.clip(thermal_loss_mesh, 0.0, 1.0)
+    tilt_map_urad = np.linspace(0.0, 2500.0, 60)
+    diopter_map_d_m = np.linspace(-20.0, 45.0, 60)
+    tilt_mesh, d_mesh = np.meshgrid(tilt_map_urad, diopter_map_d_m)
+    map_points = [
+        _thermal_point(
+            float(diopter), length_m=length_m, radius_c=radius_c,
+            wavelength_m=wavelength_m, nominal_waist_m=w0_m,
+        )
+        for diopter in diopter_map_d_m
+    ]
+    eta_total = np.zeros_like(tilt_mesh)
+    for index, point in enumerate(map_points):
+        if point.stable:
+            eta_total[index] = _tilted_mode_coupling(
+                point.q_m, nominal_waist_m=w0_m, wavelength_m=wavelength_m,
+                tilt_rad=tilt_map_urad * 1e-6,
+            )
+
+    _write_csv(
+        data_dir_path / "cavity_tolerance_map.csv",
+        (
+            {
+                "tilt_urad": float(tilt_mesh[row, column]),
+                "diopter_d_m": float(d_mesh[row, column]),
+                "coupling": float(eta_total[row, column]),
+            }
+            for row in range(eta_total.shape[0])
+            for column in range(eta_total.shape[1])
+        ),
+        ("tilt_urad", "diopter_d_m", "coupling"),
+    )
+
+    _write_csv(
+        data_dir_path / "cavity_summary.csv",
+        (
+            {"metric": "wavelength", "value": wavelength_m, "unit": "m"},
+            {"metric": "cavity_length", "value": length_m, "unit": "m"},
+            {"metric": "mirror_radius", "value": 0.20, "unit": "m"},
+            {"metric": "mirror_power_reflectance", "value": r_mirror, "unit": "1"},
+            {"metric": "finesse", "value": cav_finesse, "unit": "1"},
+            {"metric": "nominal_waist", "value": w0_m, "unit": "m"},
+            {
+                "metric": "max_tilt_discrepancy",
+                "value": max_tilt_discrepancy,
+                "unit": "1",
+            },
+            {
+                "metric": "tilt_90pct_threshold",
+                "value": tilt_90pct_threshold_urad,
+                "unit": "urad",
+            },
+            {
+                "metric": "thermal_90pct_negative_limit",
+                "value": thermal_90pct_negative_limit_d_m,
+                "unit": "1/m",
+            },
+            {
+                "metric": "thermal_90pct_positive_limit",
+                "value": thermal_90pct_positive_limit_d_m,
+                "unit": "1/m",
+            },
+            {
+                "metric": "thermal_90pct_conservative_budget",
+                "value": thermal_90pct_budget_abs_d_m,
+                "unit": "1/m",
+            },
+        ),
+        ("metric", "value", "unit"),
+    )
 
     contour = ax2.contourf(tilt_mesh, d_mesh, eta_total, levels=np.linspace(0.0, 1.0, 11), cmap="viridis")
     cbar = fig.colorbar(contour, ax=ax2)
@@ -367,8 +746,14 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="directory for generated figures (or set OPTCON_OUTPUT_DIR)",
     )
+    parser.add_argument(
+        "--data-dir",
+        type=Path,
+        default=None,
+        help="directory for row-level CSV data (defaults beside the figure directory)",
+    )
     args = parser.parse_args(argv)
-    res = run_experiment(output_dir=args.output_dir)
+    res = run_experiment(output_dir=args.output_dir, data_dir=args.data_dir)
     print("\n" + "#" * 72)
     print(f"  Experiment 05 Completed Successfully! Discrepancy: {res['max_tilt_discrepancy']:.2e}")
     print("#" * 72)
