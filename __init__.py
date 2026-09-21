@@ -22,6 +22,13 @@ from .checks import (
     singular_values,
     unitarity_error,
 )
+from .decision_stability import (
+    ChoiceStability,
+    DecisionStability,
+    ErrorBudget,
+    choice_stability,
+    threshold_stability,
+)
 from .errors import (
     AdjointCheckFailure,
     AmplitudeOrderError,
@@ -79,9 +86,12 @@ __all__ = [
     "AMPLITUDE",
     "AdjointCheckFailure",
     "AmplitudeOrderError",
+    "ChoiceStability",
     "ContractViolation",
+    "DecisionStability",
     "Dimension",
     "DimensionError",
+    "ErrorBudget",
     "EvidenceClaim",
     "EvidenceDecision",
     "EvidenceGateFailure",
@@ -108,6 +118,7 @@ __all__ = [
     "assert_reciprocal",
     "assert_unitary",
     "check_gradient",
+    "choice_stability",
     "dimensionless",
     "dot_test",
     "evaluate_claim",
@@ -131,6 +142,7 @@ __all__ = [
     "solve_fox_li_modes",
     "solve_nlse",
     "sqrt",
+    "threshold_stability",
     "unit",
     "unitarity_error",
 ]

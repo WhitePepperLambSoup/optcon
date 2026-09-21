@@ -16,6 +16,7 @@ from optcon import (
     evaluate_claim,
     evaluate_evidence,
     require_decision_ready,
+    threshold_stability,
 )
 from optcon.benchmarks.evidence_ablation import (
     EVIDENCE_CATEGORIES,
@@ -337,3 +338,24 @@ def test_evidence_graph_closure_is_monotone_when_evidence_is_added():
 
     assert before <= after
     assert "independent_reference" in after
+
+
+def test_claim_with_unstable_result_is_not_decision_ready():
+    claim = EvidenceClaim(
+        "near-boundary",
+        "scalar",
+        "threshold",
+        "margin > 0",
+        "test",
+        "test",
+        "demo",
+    )
+    record = EvidenceRecord(True, True, True, True, True)
+    stability = threshold_stability(1.0, 1.0, reference_error=0.01)
+
+    result = evaluate_claim(claim, record, stability)
+
+    assert result.decision_ready is False
+    assert result.failed_requirements == ()
+    assert result.stability is stability
+    assert result.blocking_reasons == ("stability",)

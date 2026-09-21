@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 
+from .decision_stability import DecisionStability
 from .errors import EvidenceGateFailure
 
 _REQUIREMENT_NAMES = (
@@ -126,6 +127,7 @@ class EvidenceDecision:
     failed_requirements: tuple[str, ...]
     graph_node_id: str | None = None
     evidence_categories: tuple[str, ...] = ()
+    stability: DecisionStability | None = None
 
     @property
     def status(self) -> str:
@@ -143,6 +145,14 @@ class EvidenceDecision:
     def available_categories(self) -> tuple[str, ...]:
         """Evidence categories present in the evaluated record."""
         return tuple(name for name in _REQUIREMENT_NAMES if getattr(self.record, name))
+
+    @property
+    def blocking_reasons(self) -> tuple[str, ...]:
+        """Return missing evidence categories and an optional stability block."""
+        reasons = list(self.failed_requirements)
+        if self.stability is not None and not self.stability.stable:
+            reasons.append("stability")
+        return tuple(reasons)
 
 
 class EvidenceGraph:
@@ -198,10 +208,15 @@ class EvidenceGraph:
             if getattr(requirements, name) and not getattr(record, name)
         )
 
-    def evaluate(self, node_id: str, claim: EvidenceClaim) -> EvidenceDecision:
+    def evaluate(
+        self,
+        node_id: str,
+        claim: EvidenceClaim,
+        stability: DecisionStability | None = None,
+    ) -> EvidenceDecision:
         """Evaluate a claim from graph-derived evidence and retain its trace."""
         categories = self.available_categories(node_id)
-        result = evaluate_claim(claim, self.as_record(node_id))
+        result = evaluate_claim(claim, self.as_record(node_id), stability)
         return EvidenceDecision(
             claim=result.claim,
             record=result.record,
@@ -209,6 +224,7 @@ class EvidenceGraph:
             failed_requirements=result.failed_requirements,
             graph_node_id=node_id,
             evidence_categories=categories,
+            stability=result.stability,
         )
 
     def _validate_graph(self) -> None:
@@ -259,14 +275,19 @@ def evaluate_evidence(
     return EvidenceGateResult(decision_ready=not failed, failed_requirements=failed)
 
 
-def evaluate_claim(claim: EvidenceClaim, record: EvidenceRecord) -> EvidenceDecision:
+def evaluate_claim(
+    claim: EvidenceClaim,
+    record: EvidenceRecord,
+    stability: DecisionStability | None = None,
+) -> EvidenceDecision:
     """Evaluate a claim while retaining its audit metadata and evidence trace."""
     result = evaluate_evidence(record, claim.requirements)
     return EvidenceDecision(
         claim=claim,
         record=record,
-        decision_ready=result.decision_ready,
+        decision_ready=result.decision_ready and (stability is None or stability.stable),
         failed_requirements=result.failed_requirements,
+        stability=stability,
     )
 
 
