@@ -9,6 +9,8 @@ import pytest
 from optcon import (
     EvidenceClaim,
     EvidenceGateFailure,
+    EvidenceGraph,
+    EvidenceNode,
     EvidenceRecord,
     EvidenceRequirements,
     evaluate_claim,
@@ -224,3 +226,114 @@ def test_claim_metadata_must_be_explicit():
             evidence_source="local",
             scope="test",
         )
+
+
+def test_evidence_graph_inherits_categories_from_parents():
+    graph = EvidenceGraph(
+        [
+            EvidenceNode("semantic", frozenset({"semantic"}), "unit test", "field"),
+            EvidenceNode(
+                "reference",
+                frozenset({"independent_reference"}),
+                "TMM",
+                "stack",
+            ),
+            EvidenceNode(
+                "result",
+                frozenset({"numerical"}),
+                "solver",
+                "stack",
+                ("semantic", "reference"),
+            ),
+        ]
+    )
+
+    assert graph.available_categories("result") == (
+        "semantic",
+        "numerical",
+        "independent_reference",
+    )
+
+
+def test_evidence_graph_reports_missing_categories_and_compatibility_record():
+    graph = EvidenceGraph(
+        [EvidenceNode("result", frozenset({"semantic", "numerical"}), "solver", "beam")]
+    )
+    requirements = EvidenceRequirements(
+        independent_reference=True,
+        provenance=False,
+        scope=False,
+    )
+
+    assert graph.missing_categories("result", requirements) == (
+        "independent_reference",
+    )
+    assert graph.as_record("result") == EvidenceRecord(
+        semantic=True,
+        numerical=True,
+        independent_reference=False,
+        provenance=False,
+        scope=False,
+    )
+
+
+def test_evidence_graph_evaluation_retains_graph_trace():
+    graph = EvidenceGraph(
+        [EvidenceNode("result", frozenset({"semantic", "numerical"}), "solver", "beam")]
+    )
+    claim = EvidenceClaim(
+        claim_id="beam-radius",
+        representation="sampled field",
+        observable="second-moment radius",
+        tolerance="relative error <= 1e-6",
+        diagnostic="analytic Gaussian reference",
+        evidence_source="closed form",
+        scope="paraxial Gaussian beam",
+        requirements=EvidenceRequirements(
+            semantic=True,
+            numerical=True,
+            independent_reference=False,
+            provenance=False,
+            scope=False,
+        ),
+    )
+
+    result = graph.evaluate("result", claim)
+
+    assert result.decision_ready is True
+    assert result.graph_node_id == "result"
+    assert result.evidence_categories == ("semantic", "numerical")
+
+
+def test_evidence_graph_rejects_duplicate_and_unknown_parent_nodes():
+    graph = EvidenceGraph()
+    graph.add(EvidenceNode("result", frozenset(), "solver", "beam"))
+
+    with pytest.raises(ValueError, match="duplicate"):
+        graph.add(EvidenceNode("result", frozenset(), "solver", "beam"))
+    with pytest.raises(ValueError, match="unknown parent"):
+        graph.add(EvidenceNode("child", frozenset(), "solver", "beam", ("missing",)))
+
+
+def test_evidence_graph_rejects_cycles_during_initial_validation():
+    with pytest.raises(ValueError, match="cycle"):
+        EvidenceGraph(
+            [
+                EvidenceNode("a", frozenset({"semantic"}), "source", "scope", ("b",)),
+                EvidenceNode("b", frozenset({"numerical"}), "source", "scope", ("a",)),
+            ]
+        )
+
+
+def test_evidence_graph_closure_is_monotone_when_evidence_is_added():
+    graph = EvidenceGraph(
+        [EvidenceNode("result", frozenset({"semantic"}), "solver", "beam")]
+    )
+    before = set(graph.available_categories("result"))
+    graph.add(EvidenceNode("reference", frozenset({"independent_reference"}), "TMM", "beam"))
+    graph.add(EvidenceNode("checked", frozenset(), "wrapper", "beam", ("result", "reference")))
+
+    after = set(graph.available_categories("checked"))
+
+    assert before <= after
+    assert "independent_reference" in after
