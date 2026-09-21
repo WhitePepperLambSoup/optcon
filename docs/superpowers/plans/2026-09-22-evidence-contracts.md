@@ -325,4 +325,3 @@ Commit any final generated-source or documentation updates with:
 git add README.md docs private-paper/docs benchmarks tests evidence.py decision_stability.py __init__.py
 git commit -m "feat: add compositional evidence and decision stability"
 ```
-
