@@ -31,6 +31,10 @@ STAGES = (
         "optcon.benchmarks.heldout_mutations",
     ),
     (
+        "Independent compositional promotion protocol",
+        "optcon.benchmarks.compositional_protocol",
+    ),
+    (
         "Multi-parameter adjoint stress sweep",
         "optcon.benchmarks.adjoint_stress",
     ),
