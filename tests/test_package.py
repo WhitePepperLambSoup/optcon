@@ -66,8 +66,7 @@ def test_reproducibility_entry_points_are_importable():
     importlib.import_module("optcon.examples.experiment_06_mie_decision_impact")
     importlib.import_module("optcon.examples.experiment_07_thinfilm_decision_impact")
     importlib.import_module("optcon.benchmarks.run_all")
-
-
+    importlib.import_module("optcon.benchmarks.compositional_protocol")
 def test_version_is_declared_and_semantic():
     assert re.fullmatch(r"\d+\.\d+\.\d+", optcon.__version__), optcon.__version__
 

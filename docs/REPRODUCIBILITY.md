@@ -39,6 +39,7 @@ python -m optcon.benchmarks.run_all
 python -m optcon.benchmarks.fault_injection
 python -m optcon.benchmarks.adjoint_stress
 python -m optcon.benchmarks.thinfilm_adjudication
+python -m optcon.benchmarks.compositional_protocol
 python -m optcon.benchmarks.bench
 python -m optcon.benchmarks.convergence
 python -m optcon.examples.experiment_05_cavity_thermal_tolerance
@@ -59,6 +60,16 @@ The adjoint stress command writes
 three-parameter points and eight deterministic probe seeds, for 192 row-level
 comparisons. The file records both the metric-consistent result and the
 uniform-metric negative control.
+
+The compositional protocol command writes two CSV files under
+`optcon-artifacts/benchmarks/`. The case file records the evidence-graph
+blocking reasons and decision-stability margin for each of 24 frozen cases;
+the summary reports fault detection, valid-control acceptance, and incorrect
+decision promotion. These cases test the new method across four optical
+families and are not a statistical claim about arbitrary software.
+The evaluated manifest should report `12/12` faults detected, `12/12`
+controls accepted, and `0` faulty decisions promoted. Its manifest hash is
+`475793c66867a5e78c24b9edead998f963c1dfd687be99b4d3b4006b36b67cd1`.
 
 The thin-film adjudication command uses the installed `tmm` package or the
 registered `tmm_core` source tree. It compares Fresnel interfaces, a single-layer Airy formula, and

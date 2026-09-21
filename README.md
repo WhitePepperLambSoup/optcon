@@ -114,6 +114,7 @@ The runnable examples reproduce the available checks (or run all in one pass):
 
 ```bash
 python -m optcon.benchmarks.run_all               # reproduce all experiments & benchmarks
+python -m optcon.benchmarks.compositional_protocol # evidence graph + stability benchmark
 python -m optcon.benchmarks.fault_injection        # run the deterministic silent-fault corpus
 python -m optcon.benchmarks.adjoint_stress         # run the multi-parameter adjoint sweep
 python -m optcon.benchmarks.thinfilm_adjudication  # compare closed-form thin-film results with tmm_core
@@ -189,6 +190,17 @@ The adjoint stress command writes
 phase-and-amplitude map on a nonuniform quadrature grid at 24 fixed parameter
 points and eight fixed probe seeds. The correct quadrature-metric adjoint and a
 uniform-metric negative control are reported row by row.
+
+The compositional protocol benchmark writes
+`optcon-artifacts/benchmarks/compositional_protocol_cases.csv` and
+`compositional_protocol_summary.csv`. It contains 24 frozen cases across Mie,
+thin-film, beam, and design decisions. The benchmark reports 12 controls, 12
+faults, the blocking evidence categories, the stability margin, and the
+incorrect-promotion count. It is an author-constructed robustness benchmark,
+not a population-level sensitivity estimate.
+The evaluated manifest reports `12/12` faults detected, `12/12` controls
+accepted, and `0` faulty decisions promoted. Its SHA-256 manifest hash is
+`475793c66867a5e78c24b9edead998f963c1dfd687be99b4d3b4006b36b67cd1`.
 
 ## Key Design Principles
 
