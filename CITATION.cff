@@ -12,8 +12,8 @@ authors:
     given-names: "Zhe"
     orcid: "https://orcid.org/0009-0008-3047-6452"
     affiliation: "Research School of Physics, The Australian National University"
-version: 0.1.1
-date-released: 2026-09-17
+version: 0.1.2
+date-released: 2026-09-22
 license: MIT
 type: software
 keywords:

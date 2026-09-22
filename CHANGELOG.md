@@ -6,8 +6,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-09-22
+
 ### Added
 
+- A composable evidence graph for tracing claims through evidence records,
+  requirements, and decision gates.
+- Decision-stability margins that quantify how far a selected decision is from
+  its error-budget and threshold boundaries.
+- An independent 24-case compositional protocol benchmark covering injected
+  faults and valid controls.
+- Benchmark validation results: 12/12 injected faults detected, 12/12 valid
+  controls accepted, and 0 faulty decisions promoted.
 - Row-level CSV export for the laser-cavity thermal-lens and angular-tolerance
   case study, including the combined two-parameter coupling map and a scalar
   parameter summary.
