@@ -1,4 +1,5 @@
 import csv
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -56,6 +57,35 @@ def test_complete_reproducibility_suite_runs_thinfilm_adjudication():
         "Thin-film closed-form and TMM adjudication",
         "optcon.benchmarks.thinfilm_adjudication",
     ) in run_all.STAGES
+
+
+def test_reproducibility_suite_can_skip_unavailable_optional_stages(monkeypatch, capsys):
+    monkeypatch.setattr(run_all, "available_engines", lambda group=None: [])
+
+    assert run_all.stage_available("optcon.benchmarks.thinfilm_adjudication") is False
+    assert run_all.run_section(
+        "Thin-film closed-form and TMM adjudication",
+        "optcon.benchmarks.thinfilm_adjudication",
+        skip_unavailable=True,
+    ) is True
+    assert "[SKIP]" in capsys.readouterr().out
+
+
+def test_reproducibility_runner_hides_its_arguments_from_stage_main(monkeypatch):
+    seen_argv = []
+
+    class Stage:
+        @staticmethod
+        def main():
+            seen_argv.append(list(sys.argv))
+            return 0
+
+    monkeypatch.setattr(run_all.importlib, "import_module", lambda _: Stage)
+    monkeypatch.setattr(run_all.sys, "argv", ["runner", "--skip-unavailable"])
+
+    assert run_all.run_section("stage", "fake.stage") is True
+    assert seen_argv == [["fake.stage"]]
+    assert run_all.sys.argv == ["runner", "--skip-unavailable"]
 
 
 def test_adjoint_stress_sweep_separates_correct_and_wrong_metrics(tmp_path):

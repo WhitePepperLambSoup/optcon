@@ -25,7 +25,7 @@ jobs:
       - name: Run unit tests with coverage
         run: python -m pytest tests --cov=optcon --cov-report=term-missing:skip-covered -q
       - name: Run end-to-end benchmark reproducibility suite
-        run: python -m optcon.benchmarks.run_all
+        run: python -m optcon.benchmarks.run_all --skip-unavailable
       - name: Lint with ruff
         run: python -m ruff check .
 
@@ -87,4 +87,4 @@ jobs:
           "$RUNNER_TEMP/optcon-wheel-check/bin/python" -c "import optcon; print(\"Version:\", optcon.__version__)"
           "$RUNNER_TEMP/optcon-wheel-check/bin/python" -c "from optcon import Quantity, unit, assert_unitary; print(\"Core import OK: 1 meter =\", Quantity(1.0, unit(\"m\")))"
           "$RUNNER_TEMP/optcon-wheel-check/bin/python" -c "import optcon.examples.experiment_05_cavity_thermal_tolerance; import optcon.benchmarks.run_all; print(\"Reproducibility modules import OK\")"
-          "$RUNNER_TEMP/optcon-wheel-check/bin/python" -m optcon.benchmarks.run_all
+          "$RUNNER_TEMP/optcon-wheel-check/bin/python" -m optcon.benchmarks.run_all --skip-unavailable

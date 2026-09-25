@@ -6,7 +6,13 @@ import csv
 
 import pytest
 
+from optcon.engines import available_engines
 from optcon.examples.experiment_06_mie_decision_impact import run_decision_impact
+
+pytestmark = pytest.mark.skipif(
+    not (set(available_engines("mie")) & {"miepython", "PyMieScatt"}),
+    reason="no external Mie engine available",
+)
 
 
 def test_mie_medium_convention_changes_the_first_threshold_crossing(tmp_path):

@@ -6,10 +6,13 @@ Usage:
 
 from __future__ import annotations
 
+import argparse
 import importlib
 import sys
 import time
 from pathlib import Path
+
+from optcon.engines import available_engines
 
 _repo_parent = str(Path(__file__).resolve().parent.parent.parent)
 if _repo_parent not in sys.path:
@@ -70,13 +73,34 @@ STAGES = (
 )
 
 
-def run_section(title: str, module_path: str) -> bool:
+OPTIONAL_STAGE_REQUIREMENTS = {
+    "optcon.benchmarks.thinfilm_adjudication": ("thin_film", "tmm_core"),
+    "optcon.examples.experiment_07_thinfilm_decision_impact": ("thin_film", "tmm_core"),
+}
+
+
+def stage_available(module_path: str) -> bool:
+    """Return whether the optional dependency required by a stage is installed."""
+    requirement = OPTIONAL_STAGE_REQUIREMENTS.get(module_path)
+    if requirement is None:
+        return True
+    group, engine = requirement
+    return engine in available_engines(group)
+
+
+def run_section(title: str, module_path: str, *, skip_unavailable: bool = False) -> bool:
+    if skip_unavailable and not stage_available(module_path):
+        print(f"[SKIP] {title}: required optional engine is unavailable")
+        return True
+
     print("\n" + "=" * 70)
     print(f"  RUNNING: {title}")
     print(f"  Module : {module_path}")
     print("=" * 70 + "\n")
     start = time.perf_counter()
+    original_argv = sys.argv
     try:
+        sys.argv = [module_path]
         mod = importlib.import_module(module_path)
         if hasattr(mod, "main"):
             ret = mod.main()
@@ -90,16 +114,26 @@ def run_section(title: str, module_path: str) -> bool:
         elapsed = time.perf_counter() - start
         print(f"\n[ERROR] {title} failed after {elapsed:.2f}s: {exc}")
         return False
+    finally:
+        sys.argv = original_argv
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--skip-unavailable",
+        action="store_true",
+        help="skip stages whose optional engine dependencies are unavailable",
+    )
+    args = parser.parse_args(argv)
+
     print("*" * 70)
     print("  optcon: Complete Reproducibility & Benchmark Suite")
     print("*" * 70)
 
     results = []
     for title, module_path in STAGES:
-        ok = run_section(title, module_path)
+        ok = run_section(title, module_path, skip_unavailable=args.skip_unavailable)
         results.append((title, ok))
 
     print("\n" + "#" * 70)
